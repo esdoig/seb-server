@@ -68,6 +68,8 @@ CREATE TABLE IF NOT EXISTS `exam` (
   `updating` INT(1) NOT NULL,
   `lastUpdate` VARCHAR(255) NULL,
   `active` INT(1) NOT NULL,
+  `exam_template_id` BIGINT UNSIGNED NULL,
+  `last_modified` BIGINT NULL,
   PRIMARY KEY (`id`),
   INDEX `lms_setup_key_idx` (`lms_setup_id` ASC),
   INDEX `institution_key_idx` (`institution_id` ASC),
@@ -127,6 +129,9 @@ CREATE TABLE IF NOT EXISTS `client_connection` (
   `update_time` BIGINT UNSIGNED NULL,
   `remote_proctoring_room_id` BIGINT UNSIGNED NULL,
   `remote_proctoring_room_update` INT(1) UNSIGNED NULL,
+  `client_machine_name` VARCHAR(255) NULL,
+  `client_os_name` VARCHAR(255) NULL,
+  `client_version` VARCHAR(255) NULL,
   PRIMARY KEY (`id`),
   INDEX `connection_exam_ref_idx` (`exam_id` ASC),
   INDEX `clientConnectionInstitutionRef_idx` (`institution_id` ASC),
@@ -601,4 +606,99 @@ CREATE TABLE IF NOT EXISTS `certificate` (
     ON DELETE NO ACTION
     ON UPDATE NO ACTION)
 ;
+
+-- -----------------------------------------------------
+-- Table `exam_template`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `exam_template` ;
+
+CREATE TABLE IF NOT EXISTS `exam_template` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `institution_id` BIGINT UNSIGNED NOT NULL,
+  `configuration_template_id` BIGINT UNSIGNED NULL,
+  `name` VARCHAR(255) NOT NULL,
+  `description` VARCHAR(4000) NULL,
+  `exam_type` VARCHAR(45) NULL,
+  `supporter` VARCHAR(4000) NULL,
+  `indicator_templates` VARCHAR(6000) NULL,
+  `institutional_default` INT(1) UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  INDEX `examTemplateInstitutionRef_idx` (`institution_id` ASC),
+  INDEX `examTemplateConfigTemplateRef_idx` (`configuration_template_id` ASC),
+  CONSTRAINT `examTemplateInstitutionRef`
+    FOREIGN KEY (`institution_id`)
+    REFERENCES `institution` (`id`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION,
+  CONSTRAINT `examTemplateConfigTemplateRef`
+    FOREIGN KEY (`configuration_template_id`)
+    REFERENCES `configuration_node` (`id`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION)
+;
+
+-- -----------------------------------------------------
+-- Table `batch_action`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `batch_action` ;
+
+CREATE TABLE IF NOT EXISTS `batch_action` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `institution_id` BIGINT UNSIGNED NOT NULL,
+  `action_type` VARCHAR(45) NOT NULL,
+  `source_ids` VARCHAR(8000) NULL,
+  `successful` VARCHAR(4000) NULL,
+  `last_update` BIGINT NULL,
+  `processor_id` VARCHAR(45) NULL,
+  PRIMARY KEY (`id`),
+  INDEX `batch_action_institution_ref_idx` (`institution_id` ASC),
+  CONSTRAINT `batch_action_institution_ref`
+    FOREIGN KEY (`institution_id`)
+    REFERENCES `institution` (`id`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION)
+;
+
+-- -----------------------------------------------------
+-- Table `client_indicator`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `client_indicator` ;
+
+CREATE TABLE IF NOT EXISTS `client_indicator` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `client_connection_id` BIGINT UNSIGNED NOT NULL,
+  `type` INT(2) NOT NULL,
+  `value` BIGINT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `clientIndicatorConnectionRef_idx` (`client_connection_id` ASC),
+  INDEX `clientIndicatorType` (`type` ASC),
+  CONSTRAINT `clientIndicatorConnectionRef`
+    FOREIGN KEY (`client_connection_id`)
+    REFERENCES `client_connection` (`id`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION)
+;
+
+
+-- -----------------------------------------------------
+-- Table `client_notification`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `client_notification` ;
+
+CREATE TABLE IF NOT EXISTS `client_notification` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `client_connection_id` BIGINT UNSIGNED NOT NULL,
+  `event_type` INT(2) NOT NULL,
+  `notification_type` INT(2) NOT NULL,
+  `value` BIGINT NULL,
+  `text` VARCHAR(512) NULL,
+  PRIMARY KEY (`id`),
+  INDEX `clientNotificationConnectionRef_idx` (`client_connection_id` ASC),
+  CONSTRAINT `clientNotificationConnectionRef`
+    FOREIGN KEY (`client_connection_id`)
+    REFERENCES `client_connection` (`id`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION)
+;
+
 

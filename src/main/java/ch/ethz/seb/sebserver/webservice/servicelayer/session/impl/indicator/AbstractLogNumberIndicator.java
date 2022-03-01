@@ -32,10 +32,11 @@ public abstract class AbstractLogNumberIndicator extends AbstractLogIndicator {
     protected final ClientEventRecordMapper clientEventRecordMapper;
 
     protected AbstractLogNumberIndicator(
+            final DistributedIndicatorValueService distributedPingCache,
             final ClientEventRecordMapper clientEventRecordMapper,
             final EventType... eventTypes) {
 
-        super(eventTypes);
+        super(distributedPingCache, eventTypes);
         this.clientEventRecordMapper = clientEventRecordMapper;
     }
 
@@ -53,15 +54,29 @@ public abstract class AbstractLogNumberIndicator extends AbstractLogIndicator {
     }
 
     private void valueChanged(final String text, final double value) {
-        if (this.tags == null || this.tags.length == 0) {
-            this.currentValue = value;
-        } else if (hasTag(text)) {
-            this.currentValue = value;
+        if (this.tags == null || this.tags.length == 0 || hasTag(text)) {
+            if (super.ditributedIndicatorValueRecordId != null) {
+                if (!this.distributedPingCache.updateIndicatorValueAsync(
+                        this.ditributedIndicatorValueRecordId,
+                        Double.valueOf(value).longValue())) {
+
+                    this.currentValue = computeValueAt(Utils.getMillisecondsNow());
+                } else {
+                    this.currentValue = value;
+                }
+            } else {
+                this.currentValue = value;
+            }
         }
     }
 
     @Override
     public double computeValueAt(final long timestamp) {
+
+        if (log.isDebugEnabled()) {
+            log.debug("computeValueAt: {}", timestamp);
+        }
+
         try {
 
             final List<ClientEventRecord> execute = this.clientEventRecordMapper.selectByExample()
@@ -82,6 +97,12 @@ public abstract class AbstractLogNumberIndicator extends AbstractLogIndicator {
 
             final BigDecimal numericValue = execute.get(execute.size() - 1).getNumericValue();
             if (numericValue != null) {
+
+                // update active indicator value record on persistent when caching is not enabled
+                if (!this.cachingEnabled && this.active && this.ditributedIndicatorValueRecordId != null) {
+                    this.distributedPingCache.updateIndicatorValue(this.connectionId, numericValue.longValue());
+                }
+
                 return numericValue.doubleValue();
             } else {
                 return super.currentValue;

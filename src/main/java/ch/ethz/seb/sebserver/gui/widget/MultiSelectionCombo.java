@@ -69,7 +69,7 @@ public final class MultiSelectionCombo extends Composite implements Selection {
         setLayout(gridLayout);
 
         this.addListener(SWT.Resize, this::adaptColumnWidth);
-        this.textInput = widgetFactory.textInput(this, "selection");
+        this.textInput = widgetFactory.textInput(this, locTextPrefix, "selection");
         this.textCell = new GridData(SWT.LEFT, SWT.CENTER, true, true);
         this.textInput.setLayoutData(this.textCell);
         this.dropDown = new DropDown(this.textInput, SWT.NONE);
@@ -99,6 +99,11 @@ public final class MultiSelectionCombo extends Composite implements Selection {
                 .map(t -> t._2).toArray(String[]::new));
         this.dropDown.setSelectionIndex(0);
         this.dropDown.setVisible(true);
+    }
+
+    @Override
+    public void setAriaLabel(final String label) {
+        WidgetFactory.setARIALabel(this.dropDown, label);
     }
 
     @Override

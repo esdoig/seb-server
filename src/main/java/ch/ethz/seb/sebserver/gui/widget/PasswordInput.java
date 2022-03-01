@@ -13,12 +13,13 @@ import org.eclipse.rap.rwt.RWT;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Event;
-import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Text;
 
 import ch.ethz.seb.sebserver.gbl.Constants;
+import ch.ethz.seb.sebserver.gbl.util.Utils;
 import ch.ethz.seb.sebserver.gui.service.i18n.LocTextKey;
 import ch.ethz.seb.sebserver.gui.service.page.PageService;
 
@@ -30,15 +31,23 @@ public class PasswordInput extends Composite {
             new LocTextKey("sebserver.overall.action.showPassword.tooltip");
 
     private final Composite inputAnchor;
-    private final Label visibilityButton;
+    private final Button visibilityButton;
 
     private Text passwordInputField = null;
     private boolean isPlainText = true;
     private boolean isEditable = true;
+    private String label = null;
+    private String testKey = null;
 
-    public PasswordInput(final Composite parent, final WidgetFactory widgetFactory) {
+    public PasswordInput(
+            final Composite parent,
+            final WidgetFactory widgetFactory,
+            final LocTextKey label) {
+
         super(parent, SWT.NONE);
 
+        this.label = widgetFactory.getI18nSupport().getText(label);
+        this.testKey = (label != null) ? label.name : null;
         GridLayout gridLayout = new GridLayout(2, false);
         gridLayout.horizontalSpacing = 0;
         gridLayout.verticalSpacing = 0;
@@ -107,6 +116,11 @@ public class PasswordInput extends Composite {
             this.visibilityButton.setImage(WidgetFactory.ImageIcon.VISIBILITY_OFF.getImage(getDisplay()));
         }
 
+        if (this.label != null) {
+            WidgetFactory.setARIALabel(passwordInput, this.label);
+            WidgetFactory.setTestId(passwordInput, this.testKey);
+        }
+
         this.passwordInputField = passwordInput;
         this.isPlainText = !this.isPlainText;
 
@@ -125,7 +139,9 @@ public class PasswordInput extends Composite {
 
     public void setValue(final CharSequence value) {
         if (this.passwordInputField != null) {
-            this.passwordInputField.setText(value != null ? value.toString() : StringUtils.EMPTY);
+            this.passwordInputField.setText(value != null
+                    ? Utils.escapeHTML_XML_EcmaScript(value.toString())
+                    : StringUtils.EMPTY);
             if (StringUtils.endsWith(value, Constants.IMPORTED_PASSWORD_MARKER)) {
                 this.visibilityButton.setEnabled(false);
             }

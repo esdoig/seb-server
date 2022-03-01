@@ -12,6 +12,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
+import javax.servlet.http.HttpServletRequest;
+
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -35,41 +37,46 @@ public class SEBClientConfigDownload extends AbstractDownloadServiceHandler {
 
     private final RestService restService;
 
-    protected SEBClientConfigDownload(
-            final RestService restService) {
-
+    protected SEBClientConfigDownload(final RestService restService) {
         this.restService = restService;
     }
 
     @Override
-    protected void webserviceCall(final String modelId, final String parentModelId, final OutputStream downloadOut) {
+    protected void webserviceCall(
+            final String modelId,
+            final String parentModelId,
+            final OutputStream downloadOut,
+            final HttpServletRequest request) {
 
-        final RestCall<InputStream>.RestCallBuilder restCallBuilder = this.restService
+        final RestCall<Boolean>.RestCallBuilder restCallBuilder = this.restService
                 .getBuilder(ExportClientConfig.class)
-                .withURIVariable(API.PARAM_MODEL_ID, modelId);
+                .withURIVariable(API.PARAM_MODEL_ID, modelId)
+                .withResponseExtractor(response -> {
+                    try {
+                        final InputStream input = response.getBody();
+                        IOUtils.copyLarge(input, downloadOut);
+                    } catch (final IOException e) {
+                        log.error("Unexpected error while streaming to output-stream of download response: ", e);
+                        throw new RuntimeException(e);
+                    } finally {
+                        try {
+                            downloadOut.flush();
+                            downloadOut.close();
+                        } catch (final IOException e) {
+                            log.error("Unexpected error while trying to close download output-stream");
+                        }
+                    }
+
+                    return true;
+                });
 
         if (StringUtils.isNotBlank(parentModelId)) {
             restCallBuilder.withQueryParam(EXAM.ATTR_ID, parentModelId);
         }
 
-        final InputStream input = restCallBuilder
+        restCallBuilder
                 .call()
-                .getOrThrow();
-
-        try {
-            IOUtils.copyLarge(input, downloadOut);
-        } catch (final IOException e) {
-            log.error(
-                    "Unexpected error while streaming incoming config data from web-service to output-stream of download response: ",
-                    e);
-        } finally {
-            try {
-                downloadOut.flush();
-                downloadOut.close();
-            } catch (final IOException e) {
-                log.error("Unexpected error while trying to close download output-stream");
-            }
-        }
+                .onError(error -> log.error("SEB exam settings download failed: ", error));
     }
 
 }

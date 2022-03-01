@@ -40,6 +40,7 @@ import ch.ethz.seb.sebserver.gbl.model.exam.Exam;
 import ch.ethz.seb.sebserver.gbl.model.exam.Exam.ExamStatus;
 import ch.ethz.seb.sebserver.gbl.model.exam.Exam.ExamType;
 import ch.ethz.seb.sebserver.gbl.model.exam.ExamConfigurationMap;
+import ch.ethz.seb.sebserver.gbl.model.exam.ExamTemplate;
 import ch.ethz.seb.sebserver.gbl.model.exam.Indicator.IndicatorType;
 import ch.ethz.seb.sebserver.gbl.model.exam.OpenEdxSEBRestriction.PermissionComponent;
 import ch.ethz.seb.sebserver.gbl.model.exam.OpenEdxSEBRestriction.WhiteListPath;
@@ -74,6 +75,7 @@ import ch.ethz.seb.sebserver.gui.service.i18n.I18nSupport;
 import ch.ethz.seb.sebserver.gui.service.i18n.LocTextKey;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.RestService;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.exam.GetExamNames;
+import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.exam.GetExamTemplateNames;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.exam.GetExams;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.institution.GetInstitutionNames;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.lmssetup.GetLmsSetupNames;
@@ -108,10 +110,14 @@ public class ResourceService {
             EntityType.ORIENTATION,
             EntityType.USER_ACTIVITY_LOG,
             EntityType.USER_ROLE,
-            EntityType.WEBSERVICE_SERVER_INFO);
+            EntityType.WEBSERVICE_SERVER_INFO,
+            EntityType.BATCH_ACTION,
+            EntityType.CLIENT_INDICATOR,
+            EntityType.CLIENT_NOTIFICATION,
+            EntityType.REMOTE_PROCTORING_ROOM);
 
     public static final EnumSet<EventType> CLIENT_EVENT_TYPE_EXCLUDE_MAP = EnumSet.of(
-            EventType.LAST_PING);
+            EventType.UNKNOWN);
 
     public static final String EXAMCONFIG_STATUS_PREFIX = "sebserver.examconfig.status.";
     public static final String EXAM_TYPE_PREFIX = "sebserver.exam.type.";
@@ -141,6 +147,7 @@ public class ResourceService {
     public static final String SEB_CONNECTION_STATUS_KEY_PREFIX = "sebserver.monitoring.exam.connection.status.";
     public static final LocTextKey ACTIVE_TEXT_KEY = new LocTextKey("sebserver.overall.status.active");
     public static final LocTextKey INACTIVE_TEXT_KEY = new LocTextKey("sebserver.overall.status.inactive");
+    public static final LocTextKey NO_SELECTION = new LocTextKey("sebserver.overall.action.select.none");
 
     private final I18nSupport i18nSupport;
     private final RestService restService;
@@ -242,6 +249,7 @@ public class ResourceService {
 
     public List<Tuple<String>> indicatorTypeResources() {
         return Arrays.stream(IndicatorType.values())
+                .filter(type -> type != IndicatorType.NONE)
                 .map(type -> new Tuple3<>(
                         type.name(),
                         this.i18nSupport.getText(EXAM_INDICATOR_TYPE_PREFIX + type.name(), type.name()),
@@ -303,7 +311,8 @@ public class ResourceService {
 
     public List<Tuple<String>> lmsSetupResource() {
         final boolean isSEBAdmin = this.currentUser.get().hasRole(UserRole.SEB_SERVER_ADMIN);
-        final String institutionId = (isSEBAdmin) ? "" : String.valueOf(this.currentUser.get().institutionId);
+        final String institutionId =
+                (isSEBAdmin) ? StringUtils.EMPTY : String.valueOf(this.currentUser.get().institutionId);
         return this.restService.getBuilder(GetLmsSetupNames.class)
                 .withQueryParam(Entity.FILTER_ATTR_INSTITUTION, institutionId)
                 .withQueryParam(Entity.FILTER_ATTR_ACTIVE, Constants.TRUE_STRING)
@@ -317,7 +326,8 @@ public class ResourceService {
 
     public Function<String, String> getLmsSetupNameFunction() {
         final boolean isSEBAdmin = this.currentUser.get().hasRole(UserRole.SEB_SERVER_ADMIN);
-        final String institutionId = (isSEBAdmin) ? "" : String.valueOf(this.currentUser.get().institutionId);
+        final String institutionId =
+                (isSEBAdmin) ? StringUtils.EMPTY : String.valueOf(this.currentUser.get().institutionId);
         final Map<String, String> idNameMap = this.restService.getBuilder(GetLmsSetupNames.class)
                 .withQueryParam(Entity.FILTER_ATTR_INSTITUTION, institutionId)
                 .withQueryParam(Entity.FILTER_ATTR_ACTIVE, Constants.TRUE_STRING)
@@ -448,8 +458,17 @@ public class ResourceService {
                 .collect(Collectors.toList());
     }
 
-    public List<Tuple<String>> examConfigStatusResources() {
-        return examConfigStatusResources(false);
+    public List<Tuple<String>> examConfigStatusFilterResources() {
+        return Arrays.stream(ConfigurationStatus.values())
+                .map(type -> new Tuple3<>(
+                        type.name(),
+                        this.i18nSupport.getText(EXAMCONFIG_STATUS_PREFIX + type.name()),
+                        Utils.formatLineBreaks(this.i18nSupport.getText(
+                                this.i18nSupport.getText(EXAMCONFIG_STATUS_PREFIX + type.name())
+                                        + Constants.TOOLTIP_TEXT_KEY_SUFFIX,
+                                StringUtils.EMPTY))))
+                .sorted(RESOURCE_COMPARATOR)
+                .collect(Collectors.toList());
     }
 
     public List<Tuple<String>> examConfigStatusResources(final boolean isAttachedToExam) {
@@ -584,6 +603,15 @@ public class ResourceService {
                 .getText(ResourceService.EXAM_TYPE_PREFIX + examMap.examType.name());
     }
 
+    public String localizedExamTypeName(final ExamTemplate examTemplate) {
+        if (examTemplate.examType == null) {
+            return Constants.EMPTY_NOTE;
+        }
+
+        return this.i18nSupport
+                .getText(ResourceService.EXAM_TYPE_PREFIX + examTemplate.examType.name());
+    }
+
     public String localizedExamTypeName(final Exam exam) {
         if (exam.type == null) {
             return Constants.EMPTY_NOTE;
@@ -707,7 +735,7 @@ public class ResourceService {
                 .map(node -> new Tuple<>(node.getModelId(), node.name))
                 .sorted(RESOURCE_COMPARATOR)
                 .collect(Collectors.toList());
-        collect.add(0, new Tuple<>(null, ""));
+        collect.add(0, new Tuple<>(null, StringUtils.EMPTY));
         return collect;
     }
 
@@ -763,13 +791,27 @@ public class ResourceService {
 
     public List<Tuple<String>> identityCertificatesResources() {
         return Stream.concat(
-                Stream.of(new EntityName("", EntityType.CERTIFICATE, "")),
+                Stream.of(new EntityName(StringUtils.EMPTY, EntityType.CERTIFICATE, StringUtils.EMPTY)),
                 this.restService.getBuilder(GetCertificateNames.class)
                         .withQueryParam(
                                 CertificateInfo.FILTER_ATTR_TYPE,
                                 String.valueOf(CertificateInfo.CertificateType.DATA_ENCIPHERMENT_PRIVATE_KEY))
                         .call()
                         .onError(error -> log.warn("Failed to get identity certificate names: {}", error.getMessage()))
+                        .getOr(Collections.emptyList())
+                        .stream())
+                .map(entityName -> new Tuple<>(entityName.modelId, entityName.name))
+                .collect(Collectors.toList());
+    }
+
+    public List<Tuple<String>> examTemplateResources() {
+
+        return Stream.concat(
+                Stream.of(new EntityName(StringUtils.EMPTY, EntityType.EXAM_TEMPLATE,
+                        this.i18nSupport.getText(NO_SELECTION))),
+                this.restService.getBuilder(GetExamTemplateNames.class)
+                        .call()
+                        .onError(error -> log.warn("Failed to get exam template names: {}", error.getMessage()))
                         .getOr(Collections.emptyList())
                         .stream())
                 .map(entityName -> new Tuple<>(entityName.modelId, entityName.name))

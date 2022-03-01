@@ -18,6 +18,7 @@ import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.RGB;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.ColorDialog;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Event;
@@ -83,7 +84,7 @@ public final class ColorSelection extends Composite implements Selection {
         this.colorLabel.setLayoutData(gridData);
         this.colorLabel.setData(RWT.CUSTOM_VARIANT, CustomVariant.LIGHT_COLOR_LABEL.key);
 
-        final Label imageButton = widgetFactory.imageButton(
+        final Button imageButton = widgetFactory.imageButton(
                 ImageIcon.COLOR,
                 this,
                 (StringUtils.isNotBlank(tooltipKeyPrefix)
@@ -94,6 +95,10 @@ public final class ColorSelection extends Composite implements Selection {
         final GridData actionCell = new GridData(SWT.LEFT, SWT.CENTER, true, false);
         actionCell.widthHint = ACTION_COLUMN_WIDTH;
         imageButton.setLayoutData(actionCell);
+
+        if (tooltipKeyPrefix != null) {
+            WidgetFactory.setTestId(this, tooltipKeyPrefix);
+        }
 
         this.addListener(SWT.Resize, this::adaptColumnWidth);
     }
@@ -128,6 +133,11 @@ public final class ColorSelection extends Composite implements Selection {
         this.selection = null;
     }
 
+    @Override
+    public void setAriaLabel(final String label) {
+        WidgetFactory.setARIALabel(this, label);
+    }
+
     private void addColorSelection(final Event event) {
         final Locale locale = RWT.getLocale();
         RWT.setLocale(this.i18nSupport.getUsersLanguageLocale());
@@ -151,7 +161,7 @@ public final class ColorSelection extends Composite implements Selection {
         if (this.selection != null) {
             this.colorField.setBackground(new Color(this.getDisplay(), this.selection));
             this.colorLabel.setText(Utils.parseColorString(this.selection));
-            this.colorLabel.setData(RWT.CUSTOM_VARIANT, (Utils.darkColor(this.selection))
+            this.colorLabel.setData(RWT.CUSTOM_VARIANT, (Utils.darkColorContrast(this.selection))
                     ? CustomVariant.DARK_COLOR_LABEL.key
                     : CustomVariant.LIGHT_COLOR_LABEL.key);
         } else {

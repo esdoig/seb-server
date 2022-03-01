@@ -18,11 +18,13 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
 import ch.ethz.seb.sebserver.gbl.Constants;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientConnection;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientEvent;
+import ch.ethz.seb.sebserver.gbl.model.session.ClientEvent.EventType;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientInstruction;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientInstruction.InstructionType;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientNotification;
@@ -31,6 +33,7 @@ import ch.ethz.seb.sebserver.gbl.util.Result;
 import ch.ethz.seb.sebserver.webservice.WebserviceInfo;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.ClientConnectionDAO;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.ClientEventDAO;
+import ch.ethz.seb.sebserver.webservice.servicelayer.dao.impl.ExamDeletionEvent;
 import ch.ethz.seb.sebserver.webservice.servicelayer.session.SEBClientInstructionService;
 import ch.ethz.seb.sebserver.webservice.servicelayer.session.SEBClientNotificationService;
 
@@ -63,15 +66,12 @@ public class SEBClientNotificationServiceImpl implements SEBClientNotificationSe
         this.clientConnectionDAO = clientConnectionDAO;
         this.sebClientInstructionService = sebClientInstructionService;
         if (webserviceInfo.isDistributed()) {
-            this.updateInterval = Constants.SECOND_IN_MILLIS;
+            this.updateInterval = 2 * Constants.SECOND_IN_MILLIS;
         }
     }
 
     @Override
     public Boolean hasAnyPendingNotification(final ClientConnection clientConnection) {
-        if (!clientConnection.status.clientActiveStatus) {
-            return false;
-        }
         updateCache(clientConnection.examId);
         return this.pendingNotifications.contains(clientConnection.id);
     }
@@ -82,11 +82,11 @@ public class SEBClientNotificationServiceImpl implements SEBClientNotificationSe
     }
 
     @Override
-    public void confirmPendingNotification(final ClientEvent event, final String connectionToken) {
+    public void confirmPendingNotification(final ClientEvent event) {
         try {
 
             final ClientConnection clientConnection = this.clientConnectionDAO
-                    .byConnectionToken(connectionToken)
+                    .byPK(event.connectionId)
                     .getOrThrow();
             final Long notificationId = (long) event.getValue();
 
@@ -97,8 +97,7 @@ public class SEBClientNotificationServiceImpl implements SEBClientNotificationSe
 
         } catch (final Exception e) {
             log.error(
-                    "Failed to confirm pending notification from SEB Client side. Connection token: {} confirm event: {}",
-                    connectionToken, event, e);
+                    "Failed to confirm pending notification from SEB Client side. event: {}", event, e);
         }
     }
 
@@ -116,8 +115,29 @@ public class SEBClientNotificationServiceImpl implements SEBClientNotificationSe
     }
 
     @Override
-    public void notifyNewNotification(final Long clientConnectionId) {
-        this.pendingNotifications.add(clientConnectionId);
+    public void newNotification(final ClientNotification notification) {
+        this.clientEventDAO.createNewNotification(notification)
+                .map(this::notifyNewNotifiaction)
+                .onError(error -> log.error("Failed to store new client notification: {}", notification, error));
+    }
+
+    @EventListener(ExamDeletionEvent.class)
+    public void notifyExamDeletionEvent(final ExamDeletionEvent event) {
+        // delete all notifications for given exams
+        event.ids.forEach(id -> this.clientEventDAO.getNotificationIdsForExam(id)
+                .flatMap(this.clientEventDAO::deleteClientNotification)
+                .map(deleted -> {
+                    log.debug("Deleted client notifications during exam deletion: {}", deleted);
+                    return deleted;
+                })
+                .onError(error -> log.error("Failed to delete client notifications for exam: {}", id, error)));
+    }
+
+    private ClientNotification notifyNewNotifiaction(final ClientNotification notification) {
+        if (notification.eventType == EventType.NOTIFICATION) {
+            this.pendingNotifications.add(notification.getConnectionId());
+        }
+        return notification;
     }
 
     private ClientNotification confirmClientSide(

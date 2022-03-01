@@ -9,9 +9,11 @@
 package ch.ethz.seb.sebserver.gui.service.session.proctoring;
 
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.eclipse.rap.rwt.RWT;
@@ -24,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -41,9 +44,9 @@ import ch.ethz.seb.sebserver.gbl.profile.GuiProfile;
 import ch.ethz.seb.sebserver.gbl.util.Tuple;
 import ch.ethz.seb.sebserver.gbl.util.Utils;
 import ch.ethz.seb.sebserver.gui.GuiServiceInfo;
-import ch.ethz.seb.sebserver.gui.content.ProctorRoomConnectionsPopup;
 import ch.ethz.seb.sebserver.gui.content.action.ActionDefinition;
 import ch.ethz.seb.sebserver.gui.content.action.ActionPane;
+import ch.ethz.seb.sebserver.gui.content.monitoring.ProctorRoomConnectionsPopup;
 import ch.ethz.seb.sebserver.gui.service.i18n.I18nSupport;
 import ch.ethz.seb.sebserver.gui.service.i18n.LocTextKey;
 import ch.ethz.seb.sebserver.gui.service.page.PageContext;
@@ -51,7 +54,6 @@ import ch.ethz.seb.sebserver.gui.service.page.PageService;
 import ch.ethz.seb.sebserver.gui.service.page.PageService.PageActionBuilder;
 import ch.ethz.seb.sebserver.gui.service.page.event.ActionActivationEvent;
 import ch.ethz.seb.sebserver.gui.service.page.impl.PageAction;
-import ch.ethz.seb.sebserver.gui.service.push.ServerPushContext;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.session.GetCollectingRooms;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.session.GetProctorRoomConnection;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.session.IsTownhallRoomAvailable;
@@ -80,32 +82,14 @@ public class MonitoringProctoringService {
     private static final LocTextKey EXAM_ROOM_NAME =
             new LocTextKey("sebserver.monitoring.exam.proctoring.room.all.name");
 
- // @formatter:off
-    static final String OPEN_ROOM_SCRIPT =
-            "try {\n" +
-            "var existingWin = window.open('', '%s', 'height=%s,width=%s,location=no,scrollbars=yes,status=no,menubar=0,toolbar=no,titlebar=no,dialog=no');\n" +
-            "try {\n" +
-            "if(existingWin.location.href === 'about:blank'){\n" +
-            "    existingWin.document.title = '%s';\n" +
-            "    existingWin.location.href = '%s%s';\n" +
-            "    existingWin.focus();\n" +
-            "} else {\n" +
-            "    existingWin.focus();\n" +
-            "}" +
-            "} catch(secErr) {\n" +
-            "    alert(\"Unexpected Javascript Error happened: \" + secErr);\n"+
-            "    existingWin.focus();\n" +
-            "}" +
-            "}" +
-            "catch(err) {\n" +
-            "    alert(\"Unexpected Javascript Error happened: \" + err);\n"+
-            "}";
-    // @formatter:on
+    private static final String OPEN_ROOM_SCRIPT_RES =
+            "classpath:ch/ethz/seb/sebserver/gui/service/session/proctoring/openRoomScript.js";
 
     private final PageService pageService;
     private final GuiServiceInfo guiServiceInfo;
     private final ProctorRoomConnectionsPopup proctorRoomConnectionsPopup;
     private final JSONMapper jsonMapper;
+    private final Resource openRoomScriptRes;
     private final String remoteProctoringEndpoint;
 
     public MonitoringProctoringService(
@@ -113,12 +97,14 @@ public class MonitoringProctoringService {
             final GuiServiceInfo guiServiceInfo,
             final ProctorRoomConnectionsPopup proctorRoomConnectionsPopup,
             final JSONMapper jsonMapper,
+            @Value(OPEN_ROOM_SCRIPT_RES) final Resource openRoomScript,
             @Value("${sebserver.gui.remote.proctoring.entrypoint:/remote-proctoring}") final String remoteProctoringEndpoint) {
 
         this.pageService = pageService;
         this.guiServiceInfo = guiServiceInfo;
         this.proctorRoomConnectionsPopup = proctorRoomConnectionsPopup;
         this.jsonMapper = jsonMapper;
+        this.openRoomScriptRes = openRoomScript;
         this.remoteProctoringEndpoint = remoteProctoringEndpoint;
     }
 
@@ -133,6 +119,7 @@ public class MonitoringProctoringService {
 
     public PageAction toggleTownhallRoom(
             final ProctoringGUIService proctoringGUIService,
+            final ProctoringServiceSettings proctoringSettings,
             final PageAction action) {
 
         if (isTownhallRoomActive(action.getEntityKey().modelId)) {
@@ -149,7 +136,7 @@ public class MonitoringProctoringService {
             }
 
         } else {
-            if (openTownhallRoom(proctoringGUIService, action)) {
+            if (openTownhallRoom(proctoringGUIService, proctoringSettings, action)) {
                 this.pageService.firePageEvent(
                         new ActionActivationEvent(
                                 true,
@@ -165,15 +152,23 @@ public class MonitoringProctoringService {
     }
 
     public void initCollectingRoomActions(
-            final ServerPushContext pushContext,
             final PageContext pageContext,
             final PageActionBuilder actionBuilder,
             final ProctoringServiceSettings proctoringSettings,
             final ProctoringGUIService proctoringGUIService) {
 
         proctoringGUIService.clearCollectingRoomActionState();
+        final EntityKey entityKey = pageContext.getEntityKey();
+        final Collection<RemoteProctoringRoom> collectingRooms = this.pageService
+                .getRestService()
+                .getBuilder(GetCollectingRooms.class)
+                .withURIVariable(API.PARAM_MODEL_ID, entityKey.modelId)
+                .call()
+                .onError(error -> log.error("Failed to get collecting room data:", error))
+                .getOr(Collections.emptyList());
+
         updateCollectingRoomActions(
-                pushContext,
+                collectingRooms,
                 pageContext,
                 actionBuilder,
                 proctoringSettings,
@@ -181,7 +176,7 @@ public class MonitoringProctoringService {
     }
 
     public void updateCollectingRoomActions(
-            final ServerPushContext pushContext,
+            final Collection<RemoteProctoringRoom> collectingRooms,
             final PageContext pageContext,
             final PageActionBuilder actionBuilder,
             final ProctoringServiceSettings proctoringSettings,
@@ -190,13 +185,7 @@ public class MonitoringProctoringService {
         final EntityKey entityKey = pageContext.getEntityKey();
         final I18nSupport i18nSupport = this.pageService.getI18nSupport();
 
-        this.pageService
-                .getRestService()
-                .getBuilder(GetCollectingRooms.class)
-                .withURIVariable(API.PARAM_MODEL_ID, entityKey.modelId)
-                .call()
-                .onError(error -> pushContext.reportError(error))
-                .getOr(Collections.emptyList())
+        collectingRooms
                 .stream()
                 .forEach(room -> {
                     if (proctoringGUIService.collectingRoomActionActive(room.name)) {
@@ -231,14 +220,8 @@ public class MonitoringProctoringService {
                                 _treeItem -> proctoringGUIService.registerCollectingRoomAction(
                                         room,
                                         _treeItem,
-                                        collectingRoom -> {
-                                            final PageContext pc = pageContext.copy()
-                                                    .clearAttributes()
-                                                    .withEntityKey(new EntityKey(collectingRoom.name,
-                                                            EntityType.REMOTE_PROCTORING_ROOM))
-                                                    .withParentEntityKey(entityKey);
-                                            this.proctorRoomConnectionsPopup.show(pc, collectingRoom.subject);
-                                        }));
+                                        collectingRoom -> showCollectingRoomPopup(pageContext, entityKey,
+                                                collectingRoom)));
 
                         processProctorRoomActionActivation(
                                 proctoringGUIService.getCollectingRoomActionItem(room.name),
@@ -247,6 +230,34 @@ public class MonitoringProctoringService {
                 });
 
         updateTownhallButton(proctoringGUIService, pageContext);
+    }
+
+    private void showCollectingRoomPopup(
+            final PageContext pageContext,
+            final EntityKey entityKey,
+            final RemoteProctoringRoom collectingRoom) {
+
+        final String additionalRoomData = collectingRoom.getAdditionalRoomData();
+        String joinURL = null;
+        try {
+            final Map<String, String> roomData = this.jsonMapper.readValue(
+                    additionalRoomData,
+                    new TypeReference<Map<String, String>>() {
+                    });
+            joinURL = roomData.get("start_url");
+        } catch (final Exception e) {
+            log.error("Failed to get proctoring start URL: ", e);
+        }
+        final PageContext pc = pageContext.copy()
+                .clearAttributes()
+                .withEntityKey(
+                        new EntityKey(collectingRoom.name,
+                                EntityType.REMOTE_PROCTORING_ROOM))
+                .withParentEntityKey(entityKey)
+                .withAttribute(
+                        ProctorRoomConnectionsPopup.PAGE_ATTR_JOIN_LINK,
+                        joinURL);
+        this.proctorRoomConnectionsPopup.show(pc, collectingRoom.subject);
     }
 
     private PageAction openExamProctoringRoom(
@@ -272,17 +283,17 @@ public class MonitoringProctoringService {
                 String.valueOf(proctoringSettings.examId),
                 proctoringConnectionData);
 
+        final String zoomStartLink = extractZoomStartLink(room.additionalRoomData);
         if (proctoringSettings.useZoomAppClientForCollectingRoom &&
-                StringUtils.isNotBlank(extractZoomStartLink(room))) {
+                StringUtils.isNotBlank(zoomStartLink)) {
 
-            final String startLink = extractZoomStartLink(room);
             final String script = String.format(
-                    OPEN_ROOM_SCRIPT,
+                    getOpenRoomScriptTemplate(),
                     room.name,
                     800,
                     1200,
                     room.name,
-                    startLink,
+                    zoomStartLink,
                     "");
 
             RWT.getClient()
@@ -292,7 +303,7 @@ public class MonitoringProctoringService {
         } else {
 
             final String script = String.format(
-                    OPEN_ROOM_SCRIPT,
+                    getOpenRoomScriptTemplate(),
                     room.name,
                     800,
                     1200,
@@ -316,22 +327,9 @@ public class MonitoringProctoringService {
                         .call()
                         .onError(error -> log.error("Failed to notify proctoring room opened: ", error));
             }
-
         }
 
         return action;
-    }
-
-    private String extractZoomStartLink(final RemoteProctoringRoom room) {
-        try {
-            final Map<String, String> data =
-                    this.jsonMapper.readValue(room.additionalRoomData, new TypeReference<Map<String, String>>() {
-                    });
-            return data.get("start_url");
-        } catch (final Exception e) {
-            log.error("Failed to extract Zoom start link: ", e);
-            return null;
-        }
     }
 
     public PageAction openOneToOneRoom(
@@ -365,7 +363,7 @@ public class MonitoringProctoringService {
 
             final JavaScriptExecutor javaScriptExecutor = RWT.getClient().getService(JavaScriptExecutor.class);
             final String script = String.format(
-                    MonitoringProctoringService.OPEN_ROOM_SCRIPT,
+                    getOpenRoomScriptTemplate(),
                     connectionData.clientConnection.userSessionId,
                     800,
                     1200,
@@ -384,11 +382,14 @@ public class MonitoringProctoringService {
 
     private boolean openTownhallRoom(
             final ProctoringGUIService proctoringGUIService,
+            final ProctoringServiceSettings proctoringSettings,
             final PageAction action) {
 
         try {
             final EntityKey examId = action.getEntityKey();
 
+            final String endpoint = this.remoteProctoringEndpoint;
+            final String joinURL = this.guiServiceInfo.getExternalServerURIBuilder().toUriString();
             if (proctoringGUIService.getTownhallWindowName(examId.modelId) == null) {
                 final ProctoringRoomConnection proctoringConnectionData = proctoringGUIService
                         .openTownhallRoom(
@@ -407,13 +408,13 @@ public class MonitoringProctoringService {
             final String windowName = proctoringGUIService.getTownhallWindowName(examId.modelId);
             final JavaScriptExecutor javaScriptExecutor = RWT.getClient().getService(JavaScriptExecutor.class);
             final String script = String.format(
-                    OPEN_ROOM_SCRIPT,
+                    getOpenRoomScriptTemplate(),
                     windowName,
                     800,
                     1200,
                     "Town-Hall",
-                    this.guiServiceInfo.getExternalServerURIBuilder().toUriString(),
-                    this.remoteProctoringEndpoint);
+                    joinURL,
+                    endpoint);
             javaScriptExecutor.execute(script);
 
         } catch (final Exception e) {
@@ -487,7 +488,7 @@ public class MonitoringProctoringService {
 
         try {
 
-            final boolean active = room.roomSize > 0 && !room.isOpen;
+            final boolean active = room.roomSize > 0 /* && !room.isOpen SEBSERV-236 */;
             final Display display = pageContext.getRoot().getDisplay();
             final PageAction action = (PageAction) treeItem.getData(ActionPane.ACTION_EVENT_CALL_KEY);
             final Image image = active
@@ -498,6 +499,29 @@ public class MonitoringProctoringService {
 
         } catch (final Exception e) {
             log.warn("Failed to set Proctor-Room-Activation: ", e.getMessage());
+        }
+    }
+
+    private String getOpenRoomScriptTemplate() {
+        try {
+            return IOUtils.toString(this.openRoomScriptRes.getInputStream());
+        } catch (final Exception e) {
+            log.error("Failed to load open proctoring room script template", e);
+            return "ERROR: " + e.getLocalizedMessage();
+        }
+    }
+
+    private String extractZoomStartLink(final String additioalRoomAttributesJson) {
+        try {
+            final Map<String, String> data =
+                    this.jsonMapper.readValue(
+                            additioalRoomAttributesJson,
+                            new TypeReference<Map<String, String>>() {
+                            });
+            return data.get("start_url");
+        } catch (final Exception e) {
+            log.error("Failed to extract Zoom start link: ", e);
+            return null;
         }
     }
 

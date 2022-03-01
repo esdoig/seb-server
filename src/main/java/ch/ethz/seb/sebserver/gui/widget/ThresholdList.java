@@ -18,6 +18,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Label;
@@ -102,7 +103,7 @@ public final class ThresholdList extends Composite {
         this.colorCell = new GridData(SWT.FILL, SWT.CENTER, true, false);
         colorTitle.setLayoutData(this.colorCell);
 
-        final Label imageButton = widgetFactory.imageButton(
+        final Button imageButton = widgetFactory.imageButton(
                 ImageIcon.ADD_BOX,
                 this,
                 ADD_TEXT_KEY,
@@ -153,18 +154,21 @@ public final class ThresholdList extends Composite {
                         Double.parseDouble(s);
                     }
                 },
+                false,
+                VALUE_TEXT_KEY.name + "_" + this.thresholds.size(),
                 VALUE_TEXT_KEY);
         final GridData valueCell = new GridData(SWT.FILL, SWT.CENTER, true, false);
         valueInput.setLayoutData(valueCell);
 
         final Selection selector = this.widgetFactory.selectionLocalized(
                 Type.COLOR, this, null, null, null,
-                COLOR_SELECTION_TEXT_KEY);
+                COLOR_SELECTION_TEXT_KEY,
+                (String) null);
         final GridData selectorCell = new GridData(SWT.FILL, SWT.CENTER, true, false);
         selectorCell.horizontalIndent = 2;
         selector.adaptToControl().setLayoutData(selectorCell);
 
-        final Label imageButton = this.widgetFactory.imageButton(
+        final Button imageButton = this.widgetFactory.imageButton(
                 ImageIcon.REMOVE_BOX,
                 this,
                 REMOVE_TEXT_KEY,
@@ -215,9 +219,9 @@ public final class ThresholdList extends Composite {
     private final class Entry {
         final Text valueInput;
         final Selection colorSelector;
-        final Label removeButton;
+        final Button removeButton;
 
-        Entry(final Text valueInput, final Selection colorSelector, final Label removeButton) {
+        Entry(final Text valueInput, final Selection colorSelector, final Button removeButton) {
             super();
             this.valueInput = valueInput;
             this.colorSelector = colorSelector;

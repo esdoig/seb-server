@@ -15,6 +15,7 @@ import javax.annotation.PreDestroy;
 
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Import;
@@ -31,6 +32,7 @@ import ch.ethz.seb.sebserver.webservice.servicelayer.dao.WebserviceInfoDAO;
 @Import(DataSourceAutoConfiguration.class)
 public class WebserviceInit implements ApplicationListener<ApplicationReadyEvent> {
 
+    private final ApplicationContext applicationContext;
     private final SEBServerInit sebServerInit;
     private final Environment environment;
     private final WebserviceInfo webserviceInfo;
@@ -38,23 +40,31 @@ public class WebserviceInit implements ApplicationListener<ApplicationReadyEvent
     private final ApplicationEventPublisher applicationEventPublisher;
     private final WebserviceInfoDAO webserviceInfoDAO;
     private final DBIntegrityChecker dbIntegrityChecker;
+    private final SEBServerMigrationStrategy sebServerMigrationStrategy;
 
     protected WebserviceInit(
             final SEBServerInit sebServerInit,
-            final Environment environment,
             final WebserviceInfo webserviceInfo,
             final AdminUserInitializer adminUserInitializer,
             final ApplicationEventPublisher applicationEventPublisher,
             final WebserviceInfoDAO webserviceInfoDAO,
-            final DBIntegrityChecker dbIntegrityChecker) {
+            final DBIntegrityChecker dbIntegrityChecker,
+            final ApplicationContext applicationContext,
+            final SEBServerMigrationStrategy sebServerMigrationStrategy) {
 
+        this.applicationContext = applicationContext;
         this.sebServerInit = sebServerInit;
-        this.environment = environment;
+        this.environment = applicationContext.getEnvironment();
         this.webserviceInfo = webserviceInfo;
         this.adminUserInitializer = adminUserInitializer;
         this.applicationEventPublisher = applicationEventPublisher;
         this.webserviceInfoDAO = webserviceInfoDAO;
         this.dbIntegrityChecker = dbIntegrityChecker;
+        this.sebServerMigrationStrategy = sebServerMigrationStrategy;
+    }
+
+    public ApplicationContext getApplicationContext() {
+        return this.applicationContext;
     }
 
     @Override
@@ -62,17 +72,29 @@ public class WebserviceInit implements ApplicationListener<ApplicationReadyEvent
 
         this.sebServerInit.init();
 
-        SEBServerInit.INIT_LOGGER.info("---->  **** Webservice starting up... ****");
-
+        SEBServerInit.INIT_LOGGER.info("----> *********************************************************");
+        SEBServerInit.INIT_LOGGER.info("----> *** Webservice starting up...                         ***");
+        SEBServerInit.INIT_LOGGER.info("----> *********************************************************");
         SEBServerInit.INIT_LOGGER.info("----> ");
         SEBServerInit.INIT_LOGGER.info("----> Register Webservice: {}", this.webserviceInfo.getWebserviceUUID());
 
-        try {
-            this.webserviceInfoDAO.register(
-                    this.webserviceInfo.getWebserviceUUID(),
-                    InetAddress.getLocalHost().getHostAddress());
-        } catch (final Exception e) {
-            SEBServerInit.INIT_LOGGER.error("Failed to register webservice: ", e);
+        if (this.webserviceInfoDAO.isInitialized()) {
+            this.registerWebservice();
+
+            // Apply migration if needed and possible
+            SEBServerInit.INIT_LOGGER.info("----> ");
+            this.sebServerMigrationStrategy.applyMigration();
+            SEBServerInit.INIT_LOGGER.info("----> ");
+
+        } else {
+
+            // Apply migration if needed and possible
+            SEBServerInit.INIT_LOGGER.info("----> ");
+            this.sebServerMigrationStrategy.applyMigration();
+            SEBServerInit.INIT_LOGGER.info("----> ");
+
+            this.registerWebservice();
+
         }
 
         SEBServerInit.INIT_LOGGER.info("----> ");
@@ -81,16 +103,31 @@ public class WebserviceInit implements ApplicationListener<ApplicationReadyEvent
 
         this.applicationEventPublisher.publishEvent(new SEBServerInitEvent(this));
 
-        SEBServerInit.INIT_LOGGER.info("----> ");
-        SEBServerInit.INIT_LOGGER.info("----> **** Webservice successfully started up! **** ");
+        // Run the data base integrity checks and fixes if configured
+        this.dbIntegrityChecker.checkIntegrity();
+
+        // Create an initial admin account if requested and not already in the data-base
+        this.adminUserInitializer.initAdminAccount();
+
+        SEBServerInit.INIT_LOGGER.info("----> *********************************************************");
+        SEBServerInit.INIT_LOGGER.info("----> *** Webservice Info:                                  ***");
+        SEBServerInit.INIT_LOGGER.info("----> *********************************************************");
         SEBServerInit.INIT_LOGGER.info("---->");
-        SEBServerInit.INIT_LOGGER.info("----> *** Info:");
+
+        SEBServerInit.INIT_LOGGER.info("----> JDBC connection pool max size: {}",
+                this.environment.getProperty("spring.datasource.hikari.maximumPoolSize"));
 
         if (this.webserviceInfo.isDistributed()) {
+            SEBServerInit.INIT_LOGGER.info("----> ");
             SEBServerInit.INIT_LOGGER.info("----> Distributed Setup: {}", this.webserviceInfo.getWebserviceUUID());
+            SEBServerInit.INIT_LOGGER.info("----> Ping update time: {}",
+                    this.environment.getProperty("sebserver.webservice.distributed.pingUpdate"));
+            SEBServerInit.INIT_LOGGER.info("----> Connection update time: {}",
+                    this.environment.getProperty("sebserver.webservice.distributed.connectionUpdate", "2000"));
         }
 
         try {
+            SEBServerInit.INIT_LOGGER.info("----> ");
             SEBServerInit.INIT_LOGGER.info("----> Server address: {}", this.environment.getProperty("server.address"));
             SEBServerInit.INIT_LOGGER.info("----> Server port: {}", this.environment.getProperty("server.port"));
             SEBServerInit.INIT_LOGGER.info("---->");
@@ -115,19 +152,33 @@ public class WebserviceInit implements ApplicationListener<ApplicationReadyEvent
         SEBServerInit.INIT_LOGGER.info("---->");
         SEBServerInit.INIT_LOGGER.info("----> Property Override Test: {}", this.webserviceInfo.getTestProperty());
 
-        // Run the data base integrity checks and fixes if configured
-        this.dbIntegrityChecker.checkIntegrity();
+        SEBServerInit.INIT_LOGGER.info("---->");
+        SEBServerInit.INIT_LOGGER.info("----> *********************************************************");
+        SEBServerInit.INIT_LOGGER.info("----> *** Webservice successfully started up!               ***");
+        SEBServerInit.INIT_LOGGER.info("----> *********************************************************");
+    }
 
-        // Create an initial admin account if requested and not already in the data-base
-        this.adminUserInitializer.initAdminAccount();
-
+    private boolean registerWebservice() {
+        boolean registered = false;
+        try {
+            final String webserviceUUID = this.webserviceInfo.getWebserviceUUID();
+            final String hostAddress = InetAddress.getLocalHost().getHostAddress();
+            registered = this.webserviceInfoDAO.register(webserviceUUID, hostAddress);
+            if (registered) {
+                SEBServerInit.INIT_LOGGER.info("----> Successfully register Webservice instance. uuid: {}, address: {}",
+                        webserviceUUID, hostAddress);
+            }
+        } catch (final Exception e) {
+            SEBServerInit.INIT_LOGGER.error("----> Failed to register webservice: ", e);
+        }
+        return registered;
     }
 
     @PreDestroy
     public void gracefulShutdown() {
-        SEBServerInit.INIT_LOGGER.info("**** Gracefully Shutdown of SEB Server instance {} ****",
+        SEBServerInit.INIT_LOGGER.info("*********************************************************");
+        SEBServerInit.INIT_LOGGER.info("**** Gracefully Shutdown of SEB Server instance {}",
                 this.webserviceInfo.getHostAddress());
-
         SEBServerInit.INIT_LOGGER.info("---->");
         SEBServerInit.INIT_LOGGER.info("----> Unregister Webservice: {}", this.webserviceInfo.getWebserviceUUID());
 

@@ -329,7 +329,7 @@ public class ExamProctoringController {
 
         this.authorizationService.checkRead(this.examSessionService
                 .getExamDAO()
-                .byPK(examId)
+                .examGrantEntityByPK(examId)
                 .getOrThrow());
     }
 

@@ -22,11 +22,9 @@ import org.joda.time.DateTimeZone;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
 import ch.ethz.seb.sebserver.SEBServerInit;
-import ch.ethz.seb.sebserver.SEBServerInitEvent;
 import ch.ethz.seb.sebserver.gbl.Constants;
 import ch.ethz.seb.sebserver.gbl.api.JSONMapper;
 import ch.ethz.seb.sebserver.gbl.model.EntityKey;
@@ -80,7 +78,7 @@ public class SEBClientInstructionServiceImpl implements SEBClientInstructionServ
         return this.webserviceInfo;
     }
 
-    @EventListener(SEBServerInitEvent.class)
+    @Override
     public void init() {
         SEBServerInit.INIT_LOGGER.info("------>");
         SEBServerInit.INIT_LOGGER.info("------> Run SEBInstructionService...");
@@ -163,7 +161,6 @@ public class SEBClientInstructionServiceImpl implements SEBClientInstructionServ
                     .filter(Objects::nonNull)
                     .forEach(this::putToCache);
         });
-
     }
 
     @Override
@@ -216,7 +213,7 @@ public class SEBClientInstructionServiceImpl implements SEBClientInstructionServ
                 .toString();
 
         if (log.isDebugEnabled()) {
-            log.debug("Send SEB client instruction: {} to: {} ", connectionToken, instructionJSON);
+            log.debug("Send SEB client instruction: {} to: {} ", instructionJSON, connectionToken);
         }
 
         return instructionJSON;
@@ -287,14 +284,16 @@ public class SEBClientInstructionServiceImpl implements SEBClientInstructionServ
         // Since the queue is empty check periodically if there are active instructions on the persistent storage
         final long currentTimeMillis = System.currentTimeMillis();
         if (currentTimeMillis - this.lastRefresh > PERSISTENT_UPDATE_INTERVAL) {
-            this.lastRefresh = currentTimeMillis;
-            loadInstructions()
-                    .onError(error -> log.error(
-                            "Failed load instructions from persistent storage and to refresh cache: ",
-                            error));
+            synchronized (this) {
+                this.lastRefresh = currentTimeMillis;
+                loadInstructions()
+                        .onError(error -> log.error(
+                                "Failed load instructions from persistent storage and to refresh cache: ",
+                                error));
 
-            if (!queue.isEmpty()) {
-                return getNextInstruction(connectionToken);
+                if (!queue.isEmpty()) {
+                    return getNextInstruction(connectionToken);
+                }
             }
         }
 

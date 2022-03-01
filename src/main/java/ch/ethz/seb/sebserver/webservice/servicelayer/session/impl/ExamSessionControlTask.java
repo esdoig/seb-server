@@ -28,13 +28,12 @@ import ch.ethz.seb.sebserver.gbl.profile.WebServiceProfile;
 import ch.ethz.seb.sebserver.gbl.util.Result;
 import ch.ethz.seb.sebserver.webservice.WebserviceInfo;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.ExamDAO;
-import ch.ethz.seb.sebserver.webservice.servicelayer.dao.WebserviceInfoDAO;
 import ch.ethz.seb.sebserver.webservice.servicelayer.session.ExamProctoringRoomService;
 import ch.ethz.seb.sebserver.webservice.servicelayer.session.SEBClientConnectionService;
 
 @Service
 @WebServiceProfile
-class ExamSessionControlTask implements DisposableBean {
+public class ExamSessionControlTask implements DisposableBean {
 
     private static final Logger log = LoggerFactory.getLogger(ExamSessionControlTask.class);
 
@@ -43,7 +42,6 @@ class ExamSessionControlTask implements DisposableBean {
     private final ExamUpdateHandler examUpdateHandler;
     private final ExamProctoringRoomService examProcotringRoomService;
     private final WebserviceInfo webserviceInfo;
-    private final WebserviceInfoDAO webserviceInfoDAO;
 
     private final Long examTimePrefix;
     private final Long examTimeSuffix;
@@ -56,17 +54,15 @@ class ExamSessionControlTask implements DisposableBean {
             final ExamUpdateHandler examUpdateHandler,
             final ExamProctoringRoomService examProcotringRoomService,
             final WebserviceInfo webserviceInfo,
-            final WebserviceInfoDAO webserviceInfoDAO,
             @Value("${sebserver.webservice.api.exam.time-prefix:3600000}") final Long examTimePrefix,
             @Value("${sebserver.webservice.api.exam.time-suffix:3600000}") final Long examTimeSuffix,
             @Value("${sebserver.webservice.api.exam.update-interval:1 * * * * *}") final String examTaskCron,
-            @Value("${sebserver.webservice.api.seb.lostping.update:15000}") final Long pingUpdateRate) {
+            @Value("${sebserver.webservice.api.exam.update-ping:5000}") final Long pingUpdateRate) {
 
         this.examDAO = examDAO;
         this.sebClientConnectionService = sebClientConnectionService;
         this.examUpdateHandler = examUpdateHandler;
         this.webserviceInfo = webserviceInfo;
-        this.webserviceInfoDAO = webserviceInfoDAO;
         this.examTimePrefix = examTimePrefix;
         this.examTimeSuffix = examTimeSuffix;
         this.examTaskCron = examTaskCron;
@@ -84,17 +80,20 @@ class ExamSessionControlTask implements DisposableBean {
                 this.examTimePrefix,
                 this.examTimeSuffix);
 
+        this.updateMaster();
+
         SEBServerInit.INIT_LOGGER.info("------>");
         SEBServerInit.INIT_LOGGER.info(
                 "------> Activate SEB lost-ping-event update background task on a fix rate of: {} milliseconds",
                 this.pingUpdateRate);
-
     }
 
-    @Scheduled(cron = "${sebserver.webservice.api.exam.update-interval:1 * * * * *}")
+    @Scheduled(
+            fixedDelayString = "${sebserver.webservice.api.exam.update-interval:60000}",
+            initialDelay = 10000)
     public void examRunUpdateTask() {
 
-        if (!this.webserviceInfoDAO.isMaster(this.webserviceInfo.getWebserviceUUID())) {
+        if (!this.webserviceInfo.isMaster()) {
             return;
         }
 
@@ -109,16 +108,41 @@ class ExamSessionControlTask implements DisposableBean {
         this.examDAO.releaseAgedLocks();
     }
 
-    @Scheduled(fixedRateString = "${sebserver.webservice.api.seb.lostping.update:5000}")
+    @Scheduled(
+            fixedDelayString = "${sebserver.webservice.api.seb.lostping.update:5000}",
+            initialDelay = 5000)
     public void examSessionUpdateTask() {
 
-        if (!this.webserviceInfoDAO.isMaster(this.webserviceInfo.getWebserviceUUID())) {
+        updateMaster();
+
+        if (!this.webserviceInfo.isMaster()) {
             return;
         }
 
         this.sebClientConnectionService.updatePingEvents();
+
+        if (log.isTraceEnabled()) {
+            log.trace("Run exam session update task");
+        }
+
         this.sebClientConnectionService.cleanupInstructions();
         this.examProcotringRoomService.updateProctoringCollectingRooms();
+    }
+
+    @Scheduled(
+            fixedRateString = "${sebserver.webservice.api.exam.session-cleanup:30000}",
+            initialDelay = 30000)
+    public void examSessionCleanupTask() {
+
+        if (!this.webserviceInfo.isMaster()) {
+            return;
+        }
+
+        if (log.isTraceEnabled()) {
+            log.trace("Run exam session cleanup task");
+        }
+
+        this.sebClientConnectionService.cleanupInstructions();
     }
 
     private void controlExamStart(final String updateId) {
@@ -133,6 +157,7 @@ class ExamSessionControlTask implements DisposableBean {
                     .getOrThrow()
                     .stream()
                     .filter(exam -> exam.startTime.minus(this.examTimePrefix).isBefore(now))
+                    .filter(exam -> exam.endTime != null && exam.endTime.plus(this.examTimeSuffix).isAfter(now))
                     .flatMap(exam -> Result.skipOnError(this.examUpdateHandler.setRunning(exam, updateId)))
                     .collect(Collectors.toMap(Exam::getId, Exam::getName));
 
@@ -169,6 +194,10 @@ class ExamSessionControlTask implements DisposableBean {
         } catch (final Exception e) {
             log.error("Unexpected error while trying to update exams: ", e);
         }
+    }
+
+    private void updateMaster() {
+        this.webserviceInfo.updateMaster();
     }
 
     @Override

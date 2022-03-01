@@ -15,33 +15,38 @@ import ch.ethz.seb.sebserver.gbl.model.exam.Indicator.IndicatorType;
 
 public interface IndicatorValue extends IndicatorValueHolder {
 
-    public static final String ATTR_INDICATOR_ID = "indicatorId";
-    public static final String ATTR_INDICATOR_VALUE = "indicatorValue";
-    public static final String ATTR_INDICATOR_TYPE = "indicatorType";
+    public static final String ATTR_INDICATOR_ID = "id";
+    public static final String ATTR_INDICATOR_VALUE = "val";
+    public static final String ATTR_INDICATOR_TYPE = "type";
 
     @JsonProperty(SimpleIndicatorValue.ATTR_INDICATOR_ID)
     Long getIndicatorId();
-
-    /** Use this to get the type of indicator this value was computed from.
-     *
-     * @return the type of indicator this value was computed from. */
-    @JsonProperty(SimpleIndicatorValue.ATTR_INDICATOR_TYPE)
-    IndicatorType getType();
 
     /** Use this to get the display value of the value of given IndicatorValue.
      * Since the internal value is a double this gets the correct display value for the IndicatorType
      *
      * @param indicatorValue The indicator value instance
      * @return the display value of the given IndicatorValue */
-    static String getDisplayValue(final IndicatorValue indicatorValue) {
+    static String getDisplayValue(final IndicatorValue indicatorValue, final IndicatorType type) {
         if (Double.isNaN(indicatorValue.getValue())) {
             return Constants.EMPTY_NOTE;
         }
-        if (indicatorValue.getType().integerValue) {
+        if (type.integerValue) {
             return String.valueOf((int) indicatorValue.getValue());
         } else {
             return String.valueOf(indicatorValue.getValue());
         }
+    }
+
+    default boolean dataEquals(final IndicatorValue other) {
+        final Long i1 = getIndicatorId();
+        final Long i2 = other.getIndicatorId();
+        if (i1 != null && i2 != null) {
+            if (i1.longValue() != i2.longValue() || Math.abs(this.getValue() - other.getValue()) > 0.1) {
+                return false;
+            }
+        }
+        return true;
     }
 
 }

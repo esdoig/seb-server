@@ -10,7 +10,10 @@ package ch.ethz.seb.sebserver.webservice.servicelayer.session;
 
 import java.util.Set;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import ch.ethz.seb.sebserver.gbl.model.exam.Indicator;
+import ch.ethz.seb.sebserver.gbl.model.exam.Indicator.IndicatorType;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientEvent;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientEvent.EventType;
 import ch.ethz.seb.sebserver.gbl.model.session.IndicatorValue;
@@ -30,6 +33,10 @@ public interface ClientIndicator extends IndicatorValue {
      * @param active indicates whether the connection is still an a active state or not
      * @param cachingEnabled defines whether indicator value caching is enabled or not. */
     void init(Indicator indicatorDefinition, Long connectionId, boolean active, boolean cachingEnabled);
+
+    /** get the indicator type */
+    @JsonIgnore
+    IndicatorType getType();
 
     /** Get the exam identifier of the client connection of this ClientIndicator
      *
@@ -60,6 +67,16 @@ public interface ClientIndicator extends IndicatorValue {
      * @param event The ClientEvent instance */
     void notifyValueChange(ClientEvent event);
 
+    /** This gets called on a value change e.g.: when a ClientEvent was received.
+     * NOTE: that this is called only on the same machine (server-instance) on that the ClientEvent was received.
+     *
+     * @param clientEventRecord The ClientEventRecord instance */
     void notifyValueChange(ClientEventRecord clientEventRecord);
+
+    /** This indicates if the indicator indicates an incident. This is the case if the actual indicator value
+     * is above or below the max or min value defined by the indicator threshold settings.
+     *
+     * @return true if this indicator indicates an incident */
+    boolean hasIncident();
 
 }

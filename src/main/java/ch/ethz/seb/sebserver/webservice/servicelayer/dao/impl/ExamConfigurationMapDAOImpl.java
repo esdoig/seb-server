@@ -34,6 +34,7 @@ import ch.ethz.seb.sebserver.gbl.client.ClientCredentialService;
 import ch.ethz.seb.sebserver.gbl.model.EntityDependency;
 import ch.ethz.seb.sebserver.gbl.model.EntityKey;
 import ch.ethz.seb.sebserver.gbl.model.exam.Exam;
+import ch.ethz.seb.sebserver.gbl.model.exam.Exam.ExamStatus;
 import ch.ethz.seb.sebserver.gbl.model.exam.Exam.ExamType;
 import ch.ethz.seb.sebserver.gbl.model.exam.ExamConfigurationMap;
 import ch.ethz.seb.sebserver.gbl.model.sebconfig.ConfigurationNode.ConfigurationStatus;
@@ -98,14 +99,21 @@ public class ExamConfigurationMapDAOImpl implements ExamConfigurationMapDAO {
     @Override
     @Transactional(readOnly = true)
     public Result<Collection<ExamConfigurationMap>> allOf(final Set<Long> pks) {
-        return Result.tryCatch(() -> this.examConfigurationMapRecordMapper.selectByExample()
-                .where(ExamConfigurationMapRecordDynamicSqlSupport.id, isIn(new ArrayList<>(pks)))
-                .build()
-                .execute()
-                .stream()
-                .map(this::toDomainModel)
-                .flatMap(DAOLoggingSupport::logAndSkipOnError)
-                .collect(Collectors.toList()));
+        return Result.tryCatch(() -> {
+
+            if (pks == null || pks.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            return this.examConfigurationMapRecordMapper.selectByExample()
+                    .where(ExamConfigurationMapRecordDynamicSqlSupport.id, isIn(new ArrayList<>(pks)))
+                    .build()
+                    .execute()
+                    .stream()
+                    .map(this::toDomainModel)
+                    .flatMap(DAOLoggingSupport::logAndSkipOnError)
+                    .collect(Collectors.toList());
+        });
     }
 
     @Override
@@ -268,6 +276,9 @@ public class ExamConfigurationMapDAOImpl implements ExamConfigurationMapDAO {
         return Result.tryCatch(() -> {
 
             final List<Long> ids = extractListOfPKs(all);
+            if (ids == null || ids.isEmpty()) {
+                return Collections.emptyList();
+            }
 
             // get all involved configurations
             final List<Long> configIds = this.examConfigurationMapRecordMapper.selectByExample()
@@ -360,6 +371,34 @@ public class ExamConfigurationMapDAOImpl implements ExamConfigurationMapDAO {
                 .stream()
                 .collect(Utils.toSingleton()))
                 .flatMap(this::getExamIdsForConfigNodeId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Result<Boolean> checkNoActiveExamReferences(final Long configurationNodeId) {
+        return Result.tryCatch(() -> !this.examConfigurationMapRecordMapper.selectByExample()
+                .where(
+                        ExamConfigurationMapRecordDynamicSqlSupport.configurationNodeId,
+                        isEqualTo(configurationNodeId))
+                .build()
+                .execute()
+                .stream()
+                .filter(rec -> !isExamFinished(rec.getExamId()))
+                .findFirst()
+                .isPresent());
+    }
+
+    private boolean isExamFinished(final Long examId) {
+        try {
+            return this.examRecordMapper.countByExample()
+                    .where(ExamRecordDynamicSqlSupport.id, isEqualTo(examId))
+                    .and(ExamRecordDynamicSqlSupport.status, isEqualTo(ExamStatus.FINISHED.name()))
+                    .build()
+                    .execute() >= 1;
+        } catch (final Exception e) {
+            log.warn("Failed to check exam status for exam: {}", examId, e);
+            return false;
+        }
     }
 
     private Result<ExamConfigurationMapRecord> recordById(final Long id) {

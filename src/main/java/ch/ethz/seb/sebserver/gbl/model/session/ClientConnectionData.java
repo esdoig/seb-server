@@ -22,10 +22,10 @@ import ch.ethz.seb.sebserver.gbl.util.Utils;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ClientConnectionData {
 
-    public static final String ATTR_CLIENT_CONNECTION = "clientConnection";
-    public static final String ATTR_INDICATOR_VALUE = "indicatorValues";
-    public static final String ATTR_MISSING_PING = "missingPing";
-    public static final String ATTR_PENDING_NOTIFICATION = "pendingNotification";
+    public static final String ATTR_CLIENT_CONNECTION = "cData";
+    public static final String ATTR_INDICATOR_VALUE = "iValues";
+    public static final String ATTR_MISSING_PING = "missing";
+    public static final String ATTR_PENDING_NOTIFICATION = "notification";
 
     @JsonProperty(ATTR_CLIENT_CONNECTION)
     public final ClientConnection clientConnection;
@@ -73,6 +73,11 @@ public class ClientConnectionData {
         return this.clientConnection.id;
     }
 
+    @JsonIgnore
+    public boolean hasAnyIncident() {
+        return this.missingPing || this.pendingNotification;
+    }
+
     public ClientConnection getClientConnection() {
         return this.clientConnection;
     }
@@ -95,7 +100,7 @@ public class ClientConnectionData {
         while (i1.hasNext()) {
             final IndicatorValue iv1 = i1.next();
             final IndicatorValue iv2 = i2.next();
-            if (iv1.getType() != iv2.getType() || Math.abs(iv1.getValue() - iv2.getValue()) > 0.1) {
+            if (!iv1.dataEquals(iv2)) {
                 return false;
             }
         }

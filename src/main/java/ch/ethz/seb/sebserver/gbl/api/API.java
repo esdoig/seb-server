@@ -18,6 +18,17 @@ public final class API {
         ACTIVATE
     }
 
+    public enum BatchActionType {
+        EXAM_CONFIG_STATE_CHANGE(EntityType.CONFIGURATION_NODE),
+        EXAM_CONFIG_APPLY_TEMPLATE_VALUES(EntityType.CONFIGURATION_NODE);
+
+        public final EntityType entityType;
+
+        private BatchActionType(final EntityType entityType) {
+            this.entityType = entityType;
+        }
+    }
+
     public static final String SEB_FILE_EXTENSION = "seb";
 
     public static final String PARAM_LOGO_IMAGE = "logoImageBase64";
@@ -85,6 +96,12 @@ public final class API {
 
     public static final String EXAM_API_PARAM_CLIENT_ID = "client_id";
 
+    public static final String EXAM_API_PARAM_SEB_OS_NAME = "seb_os_name";
+
+    public static final String EXAM_API_PARAM_SEB_MACHINE_NAME = "seb_machine_name";
+
+    public static final String EXAM_API_PARAM_SEB_VERSION = "seb_version";
+
     public static final String EXAM_API_SEB_CONNECTION_TOKEN = "SEBConnectionToken";
 
     public static final String EXAM_API_USER_SESSION_ID = "seb_user_session_id";
@@ -127,7 +144,7 @@ public final class API {
     public static final String QUIZ_DISCOVERY_ENDPOINT = "/quiz";
 
     public static final String EXAM_ADMINISTRATION_ENDPOINT = "/exam";
-    public static final String EXAM_ADMINISTRATION_DOWNLOAD_CONFIG_PATH_SEGMENT = "/download-config";
+    //public static final String EXAM_ADMINISTRATION_DOWNLOAD_CONFIG_PATH_SEGMENT = "/download-config";
     public static final String EXAM_ADMINISTRATION_CONSISTENCY_CHECK_PATH_SEGMENT = "/check-consistency";
     public static final String EXAM_ADMINISTRATION_CONSISTENCY_CHECK_INCLUDE_RESTRICTION = "include-restriction";
     public static final String EXAM_ADMINISTRATION_SEB_RESTRICTION_PATH_SEGMENT = "/seb-restriction";
@@ -153,7 +170,7 @@ public final class API {
     public static final String CONFIGURATION_VALUE_ENDPOINT = "/configuration_value";
     public static final String CONFIGURATION_TABLE_VALUE_PATH_SEGMENT = "/table";
     public static final String CONFIGURATION_ATTRIBUTE_ENDPOINT = "/configuration_attribute";
-    public static final String CONFIGURATION_PLAIN_XML_DOWNLOAD_PATH_SEGMENT = "/downloadxml";
+    public static final String CONFIGURATION_SEB_SETTINGS_DOWNLOAD_PATH_SEGMENT = "/downloadSettings";
     public static final String CONFIGURATION_IMPORT_PATH_SEGMENT = "/import";
     public static final String IMPORT_PASSWORD_ATTR_NAME = "importFilePassword";
     public static final String IMPORT_FILE_ATTR_NAME = "importFile";
@@ -171,6 +188,7 @@ public final class API {
     public static final String USER_ACTIVITY_LOG_ENDPOINT = "/useractivity";
 
     public static final String EXAM_MONITORING_ENDPOINT = "/monitoring";
+    public static final String EXAM_MONITORING_FULLPAGE = "/fullpage";
     public static final String EXAM_MONITORING_INSTRUCTION_ENDPOINT = "/instruction";
     public static final String EXAM_MONITORING_NOTIFICATION_ENDPOINT = "/notification";
     public static final String EXAM_MONITORING_DISABLE_CONNECTION_ENDPOINT = "/disable-connection";
@@ -197,11 +215,19 @@ public final class API {
 
     public static final String SEB_CLIENT_EVENT_ENDPOINT = "/seb-client-event";
     public static final String SEB_CLIENT_EVENT_SEARCH_PATH_SEGMENT = "/search";
+    public static final String SEB_CLIENT_EVENT_EXPORT_PATH_SEGMENT = "/export";
+    public static final String SEB_CLIENT_EVENT_EXPORT_TYPE = "exportType";
+    public static final String SEB_CLIENT_EVENT_EXPORT_INCLUDE_CONNECTIONS = "includeConnectionDetails";
+    public static final String SEB_CLIENT_EVENT_EXPORT_INCLUDE_EXAMS = "includeExamDetails";
     public static final String SEB_CLIENT_EVENT_EXTENDED_PAGE_ENDPOINT = SEB_CLIENT_EVENT_ENDPOINT
             + SEB_CLIENT_EVENT_SEARCH_PATH_SEGMENT;
 
     public static final String CERTIFICATE_ENDPOINT = "/certificate";
     public static final String CERTIFICATE_ALIAS = "alias";
     public static final String CERTIFICATE_ALIAS_VAR_PATH_SEGMENT = "/{" + CERTIFICATE_ALIAS + "}";
+
+    public static final String EXAM_TEMPLATE_ENDPOINT = "/exam-template";
+    public static final String EXAM_TEMPLATE_INDICATOR_PATH_SEGMENT = "/indicator";
+    public static final String EXAM_TEMPLATE_DEFAULT_PATH_SEGMENT = "/default";
 
 }

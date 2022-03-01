@@ -8,7 +8,7 @@
 
 package ch.ethz.seb.sebserver.webservice.weblayer.api;
 
-import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -17,16 +17,11 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 
 import org.apache.commons.lang3.StringUtils;
 import org.mybatis.dynamic.sql.SqlTable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.util.MultiValueMap;
 import org.springframework.validation.FieldError;
@@ -41,6 +36,7 @@ import ch.ethz.seb.sebserver.gbl.Constants;
 import ch.ethz.seb.sebserver.gbl.api.API;
 import ch.ethz.seb.sebserver.gbl.api.APIMessage;
 import ch.ethz.seb.sebserver.gbl.api.APIMessage.APIMessageException;
+import ch.ethz.seb.sebserver.gbl.api.APIMessage.ErrorMessage;
 import ch.ethz.seb.sebserver.gbl.api.EntityType;
 import ch.ethz.seb.sebserver.gbl.api.POSTMapper;
 import ch.ethz.seb.sebserver.gbl.api.authorization.PrivilegeType;
@@ -70,9 +66,9 @@ import ch.ethz.seb.sebserver.webservice.servicelayer.dao.FilterMap;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.UserActivityLogDAO;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.UserDAO;
 import ch.ethz.seb.sebserver.webservice.servicelayer.exam.ExamAdminService;
+import ch.ethz.seb.sebserver.webservice.servicelayer.exam.ExamTemplateService;
 import ch.ethz.seb.sebserver.webservice.servicelayer.lms.LmsAPIService;
 import ch.ethz.seb.sebserver.webservice.servicelayer.lms.SEBRestrictionService;
-import ch.ethz.seb.sebserver.webservice.servicelayer.sebconfig.ExamConfigService;
 import ch.ethz.seb.sebserver.webservice.servicelayer.session.ExamSessionService;
 import ch.ethz.seb.sebserver.webservice.servicelayer.validation.BeanValidationService;
 
@@ -81,13 +77,11 @@ import ch.ethz.seb.sebserver.webservice.servicelayer.validation.BeanValidationSe
 @RequestMapping("${sebserver.webservice.api.admin.endpoint}" + API.EXAM_ADMINISTRATION_ENDPOINT)
 public class ExamAdministrationController extends EntityController<Exam, Exam> {
 
-    private static final Logger log = LoggerFactory.getLogger(ExamAdministrationController.class);
-
     private final ExamDAO examDAO;
     private final UserDAO userDAO;
     private final ExamAdminService examAdminService;
+    private final ExamTemplateService examTemplateService;
     private final LmsAPIService lmsAPIService;
-    private final ExamConfigService sebExamConfigService;
     private final ExamSessionService examSessionService;
     private final SEBRestrictionService sebRestrictionService;
 
@@ -101,7 +95,7 @@ public class ExamAdministrationController extends EntityController<Exam, Exam> {
             final LmsAPIService lmsAPIService,
             final UserDAO userDAO,
             final ExamAdminService examAdminService,
-            final ExamConfigService sebExamConfigService,
+            final ExamTemplateService examTemplateService,
             final ExamSessionService examSessionService,
             final SEBRestrictionService sebRestrictionService) {
 
@@ -115,8 +109,8 @@ public class ExamAdministrationController extends EntityController<Exam, Exam> {
         this.examDAO = examDAO;
         this.userDAO = userDAO;
         this.examAdminService = examAdminService;
+        this.examTemplateService = examTemplateService;
         this.lmsAPIService = lmsAPIService;
-        this.sebExamConfigService = sebExamConfigService;
         this.examSessionService = examSessionService;
         this.sebRestrictionService = sebRestrictionService;
     }
@@ -148,7 +142,7 @@ public class ExamAdministrationController extends EntityController<Exam, Exam> {
         //       of the SEB Server. Therefore in the case we have no or the default sorting we can use the
         //       native PaginationService within MyBatis and SQL. For the other cases we need an in-line sorting and paging
         if (StringUtils.isBlank(sort) ||
-                this.paginationService.isNativeSortingSupported(ExamRecordDynamicSqlSupport.examRecord, sort)) {
+                (this.paginationService.isNativeSortingSupported(ExamRecordDynamicSqlSupport.examRecord, sort))) {
 
             return super.getPage(institutionId, pageNumber, pageSize, sort, allRequestParams, request);
 
@@ -172,46 +166,6 @@ public class ExamAdministrationController extends EntityController<Exam, Exam> {
                     sort,
                     exams,
                     pageSort(sort));
-        }
-    }
-
-    @RequestMapping(
-            path = API.MODEL_ID_VAR_PATH_SEGMENT
-                    + API.EXAM_ADMINISTRATION_DOWNLOAD_CONFIG_PATH_SEGMENT
-                    + API.PARENT_MODEL_ID_VAR_PATH_SEGMENT,
-            method = RequestMethod.GET,
-            produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
-    public void downloadPlainXMLConfig(
-            @PathVariable final Long modelId,
-            @PathVariable final Long parentModelId,
-            @RequestParam(
-                    name = API.PARAM_INSTITUTION_ID,
-                    required = true,
-                    defaultValue = UserService.USERS_INSTITUTION_AS_DEFAULT) final Long institutionId,
-            final HttpServletResponse response) throws IOException {
-
-        this.entityDAO.byPK(modelId)
-                .flatMap(this.authorization::checkRead)
-                .flatMap(this.userActivityLogDAO::logExport);
-
-        final ServletOutputStream outputStream = response.getOutputStream();
-
-        try {
-
-            this.sebExamConfigService.exportForExam(
-                    outputStream,
-                    institutionId,
-                    parentModelId,
-                    modelId);
-
-            response.setStatus(HttpStatus.OK.value());
-
-        } catch (final Exception e) {
-            log.error("Unexpected error while trying to downstream exam config: ", e);
-            response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
-        } finally {
-            outputStream.flush();
-            outputStream.close();
         }
     }
 
@@ -425,9 +379,11 @@ public class ExamAdministrationController extends EntityController<Exam, Exam> {
         return this.entityDAO.byPK(examId)
                 .flatMap(this.authorization::checkModify)
                 .map(exam -> {
-                    this.examAdminService.getExamProctoringService(proctoringServiceSettings.serverType)
-                            .flatMap(service -> service.testExamProctoring(proctoringServiceSettings))
-                            .getOrThrow();
+                    if (StringUtils.isNotBlank(proctoringServiceSettings.serverURL)) {
+                        this.examAdminService.getExamProctoringService(proctoringServiceSettings.serverType)
+                                .flatMap(service -> service.testExamProctoring(proctoringServiceSettings))
+                                .getOrThrow();
+                    }
                     this.examAdminService.saveProctoringServiceSettings(examId, proctoringServiceSettings);
                     return exam;
                 })
@@ -459,10 +415,42 @@ public class ExamAdministrationController extends EntityController<Exam, Exam> {
 
     @Override
     protected Result<Exam> notifyCreated(final Exam entity) {
-        return this.examAdminService
-                .addDefaultIndicator(entity)
-                .flatMap(this.examAdminService::saveAdditionalAttributes)
-                .flatMap(this.examAdminService::applyAdditionalSEBRestrictions);
+        final List<APIMessage> errors = new ArrayList<>();
+
+        this.examTemplateService
+                .addDefinedIndicators(entity)
+                .onErrorDo(error -> {
+                    errors.add(ErrorMessage.EXAM_IMPORT_ERROR_AUTO_INDICATOR.of(error));
+                    return entity;
+                })
+                .flatMap(this.examTemplateService::initAdditionalAttributes)
+                .onErrorDo(error -> {
+                    errors.add(ErrorMessage.EXAM_IMPORT_ERROR_AUTO_ATTRIBUTES.of(error));
+                    return entity;
+                })
+                .flatMap(this.examTemplateService::initExamConfiguration)
+                .onErrorDo(error -> {
+                    if (error instanceof APIMessageException) {
+                        errors.addAll(((APIMessageException) error).getAPIMessages());
+                    } else {
+                        errors.add(ErrorMessage.EXAM_IMPORT_ERROR_AUTO_CONFIG.of(error));
+                    }
+                    return entity;
+                })
+                .flatMap(this.examAdminService::applyAdditionalSEBRestrictions)
+                .onErrorDo(error -> {
+                    errors.add(ErrorMessage.EXAM_IMPORT_ERROR_AUTO_RESTRICTION.of(error));
+                    return entity;
+                });
+
+        if (!errors.isEmpty()) {
+            errors.add(0, ErrorMessage.EXAM_IMPORT_ERROR_AUTO_SETUP.of(
+                    entity.getModelId(),
+                    API.PARAM_MODEL_ID + Constants.FORM_URL_ENCODED_NAME_VALUE_SEPARATOR + entity.getModelId()));
+            throw new APIMessageException(errors);
+        } else {
+            return Result.of(entity);
+        }
     }
 
     @Override
@@ -470,7 +458,7 @@ public class ExamAdministrationController extends EntityController<Exam, Exam> {
         return Result.tryCatch(() -> {
             this.examSessionService.flushCache(entity);
             return entity;
-        }).flatMap(this.examAdminService::saveAdditionalAttributes);
+        }).flatMap(this.examAdminService::saveLMSAttributes);
     }
 
     @Override
@@ -587,7 +575,7 @@ public class ExamAdministrationController extends EntityController<Exam, Exam> {
             if (sortBy.equals(Exam.FILTER_ATTR_TYPE)) {
                 list.sort(Comparator.comparing(exam -> exam.type));
             }
-            if (sortBy.equals(QuizData.FILTER_ATTR_START_TIME)) {
+            if (sortBy.equals(QuizData.FILTER_ATTR_START_TIME) || sortBy.equals(QuizData.QUIZ_ATTR_START_TIME)) {
                 list.sort(Comparator.comparing(exam -> exam.startTime));
             }
 

@@ -38,12 +38,14 @@ import ch.ethz.seb.sebserver.gbl.api.EntityType;
 import ch.ethz.seb.sebserver.gbl.api.JSONMapper;
 import ch.ethz.seb.sebserver.gbl.model.Entity;
 import ch.ethz.seb.sebserver.gbl.model.EntityKey;
+import ch.ethz.seb.sebserver.gbl.model.EntityProcessingReport;
 import ch.ethz.seb.sebserver.gbl.model.user.UserAccount;
 import ch.ethz.seb.sebserver.gbl.model.user.UserActivityLog;
 import ch.ethz.seb.sebserver.gbl.model.user.UserInfo;
 import ch.ethz.seb.sebserver.gbl.model.user.UserLogActivityType;
 import ch.ethz.seb.sebserver.gbl.profile.WebServiceProfile;
 import ch.ethz.seb.sebserver.gbl.util.Result;
+import ch.ethz.seb.sebserver.gbl.util.Utils;
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.InstitutionRecordDynamicSqlSupport;
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.UserActivityLogRecordDynamicSqlSupport;
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.UserActivityLogRecordMapper;
@@ -87,11 +89,13 @@ public class UserActivityLogDAOImpl implements UserActivityLogDAO {
     }
 
     @Override
+    @Transactional
     public Result<UserInfo> logLogin(final UserInfo user) {
         return log(UserLogActivityType.LOGIN, user);
     }
 
     @Override
+    @Transactional
     public Result<UserInfo> logLogout(final UserInfo user) {
         return log(UserLogActivityType.LOGOUT, user);
     }
@@ -158,6 +162,50 @@ public class UserActivityLogDAOImpl implements UserActivityLogDAO {
 
     @Override
     @Transactional
+    public <E extends Entity> Result<E> logDelete(final E entity) {
+        return log(UserLogActivityType.DELETE, entity);
+    }
+
+    @Override
+    @Transactional
+    public Result<EntityProcessingReport> logBulkAction(final EntityProcessingReport bulkActionReport) {
+
+        try {
+
+            UserLogActivityType activityType = null;
+            switch (bulkActionReport.bulkActionType) {
+                case ACTIVATE:
+                    activityType = UserLogActivityType.ACTIVATE;
+                    break;
+                case DEACTIVATE:
+                    activityType = UserLogActivityType.DEACTIVATE;
+                    break;
+                case HARD_DELETE:
+                    activityType = UserLogActivityType.DELETE;
+                    break;
+            }
+
+            final String message = bulkActionReport.results
+                    .stream()
+                    .map(EntityKey::toString)
+                    .collect(Collectors.joining(Constants.LIST_SEPARATOR));
+            final UserLogActivityType _activityType = activityType;
+            bulkActionReport.source.stream()
+                    .forEach(entityKey -> log(
+                            _activityType,
+                            entityKey.entityType,
+                            entityKey.modelId,
+                            message));
+
+            return Result.of(bulkActionReport);
+        } catch (final Exception e) {
+            log.error("Failed to do audit log for bulk action: ", e);
+            return Result.of(bulkActionReport);
+        }
+    }
+
+    @Override
+    @Transactional
     public <E extends Entity> Result<E> log(
             final UserLogActivityType activityType,
             final E entity,
@@ -200,6 +248,7 @@ public class UserActivityLogDAOImpl implements UserActivityLogDAO {
     }
 
     @Override
+    @Transactional
     public <T> Result<T> log(
             final UserLogActivityType activityType,
             final EntityType entityType,
@@ -275,6 +324,9 @@ public class UserActivityLogDAOImpl implements UserActivityLogDAO {
         return Result.tryCatch(() -> {
 
             final List<Long> ids = extractListOfPKs(all);
+            if (ids == null || ids.isEmpty()) {
+                return Collections.emptyList();
+            }
 
             this.userLogRecordMapper.deleteByExample()
                     .where(UserActivityLogRecordDynamicSqlSupport.id, isIn(ids))
@@ -389,12 +441,19 @@ public class UserActivityLogDAOImpl implements UserActivityLogDAO {
     @Override
     @Transactional(readOnly = true)
     public Result<Collection<UserActivityLog>> allOf(final Set<Long> pks) {
-        return Result.tryCatch(() -> this.toDomainModel(
-                this.userService.getCurrentUser().institutionId(),
-                this.userLogRecordMapper.selectByExample()
-                        .where(UserActivityLogRecordDynamicSqlSupport.id, isIn(new ArrayList<>(pks)))
-                        .build()
-                        .execute()));
+        return Result.tryCatch(() -> {
+
+            if (pks == null || pks.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            return this.toDomainModel(
+                    this.userService.getCurrentUser().institutionId(),
+                    this.userLogRecordMapper.selectByExample()
+                            .where(UserActivityLogRecordDynamicSqlSupport.id, isIn(new ArrayList<>(pks)))
+                            .build()
+                            .execute());
+        });
     }
 
     @Override
@@ -537,6 +596,10 @@ public class UserActivityLogDAOImpl implements UserActivityLogDAO {
                     .writeValueAsString(entity.printSecureCopy());
         } catch (final JsonProcessingException e) {
             entityAsString = entity.toString();
+        }
+
+        if (entityAsString != null && entityAsString.length() > 4000) {
+            return Utils.truncateText(entityAsString, 4000);
         }
         return entityAsString;
     }

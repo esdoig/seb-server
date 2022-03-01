@@ -16,19 +16,33 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import ch.ethz.seb.sebserver.gbl.Constants;
+import ch.ethz.seb.sebserver.gbl.api.EntityType;
 import ch.ethz.seb.sebserver.gbl.model.Domain;
+import ch.ethz.seb.sebserver.gbl.util.Pair;
 
 public class ClientNotification extends ClientEvent {
 
     public static enum NotificationType {
-        UNKNOWN(null),
-        LOCK_SCREEN("lockscreen"),
-        RAISE_HAND("raisehand");
+        UNKNOWN(0, null),
+        LOCK_SCREEN(1, "lockscreen"),
+        RAISE_HAND(2, "raisehand");
 
+        public final int id;
         public final String typeName;
 
-        private NotificationType(final String typeName) {
+        private NotificationType(final int id, final String typeName) {
+            this.id = id;
             this.typeName = typeName;
+        }
+
+        public static NotificationType byId(final int id) {
+            for (final NotificationType type : NotificationType.values()) {
+                if (type.id == id) {
+                    return type;
+                }
+            }
+
+            return UNKNOWN;
         }
 
         public static NotificationType getNotificationType(final String text) {
@@ -37,7 +51,6 @@ public class ClientNotification extends ClientEvent {
             }
             return Arrays.asList(NotificationType.values())
                     .stream()
-
                     .filter(type -> type.typeName != null &&
                             text.startsWith(Constants.ANGLE_BRACE_OPEN + type.typeName + Constants.ANGLE_BRACE_CLOSE))
                     .findFirst()
@@ -84,6 +97,11 @@ public class ClientNotification extends ClientEvent {
     }
 
     @Override
+    public EntityType entityType() {
+        return EntityType.CLIENT_NOTIFICATION;
+    }
+
+    @Override
     public String toString() {
         final StringBuilder builder = new StringBuilder();
         builder.append("ClientNotification [notificationType=");
@@ -104,6 +122,16 @@ public class ClientNotification extends ClientEvent {
         builder.append(this.text);
         builder.append("]");
         return builder.toString();
+    }
+
+    public static Pair<NotificationType, String> extractTypeAndPlainText(final String text) {
+        final NotificationType type = NotificationType.getNotificationType(text);
+        if (type != NotificationType.UNKNOWN) {
+            return new Pair<>(type,
+                    text.replace(Constants.ANGLE_BRACE_OPEN + type.typeName + Constants.ANGLE_BRACE_CLOSE, ""));
+        } else {
+            return new Pair<>(type, text);
+        }
     }
 
 }

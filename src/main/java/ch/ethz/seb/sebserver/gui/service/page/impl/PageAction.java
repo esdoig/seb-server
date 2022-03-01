@@ -70,10 +70,10 @@ public final class PageAction {
         this.fireActionEvent = fireActionEvent;
         this.ignoreMoveAwayFromEdit = ignoreMoveAwayFromEdit;
         this.switchAction = switchAction;
-        this.titleArgs = titleArgs;
         if (this.switchAction != null) {
             this.switchAction.switchAction = this;
         }
+        this.titleArgs = titleArgs;
 
         if (this.pageContext != null) {
             this.pageContext = pageContext.withAttribute(AttributeKeys.READ_ONLY, Constants.TRUE_STRING);
@@ -100,6 +100,14 @@ public final class PageAction {
         } else {
             return this.definition.title;
         }
+    }
+
+    public void setTitleArgument(final int argIndex, final Object value) {
+        if (this.titleArgs == null || this.titleArgs.length <= argIndex) {
+            return;
+        }
+
+        this.titleArgs[argIndex] = value;
     }
 
     public PageAction getSwitchAction() {
@@ -173,7 +181,7 @@ public final class PageAction {
             if (confirmMessage != null) {
                 this.pageContext.applyConfirmDialog(confirmMessage,
                         confirm -> callback.accept((confirm)
-                                ? exec()
+                                ? exec().onError(error -> this.pageContext.notifyUnexpectedError(error))
                                 : Result.ofRuntimeError("Confirm denied")));
             } else {
                 callback.accept(exec());
@@ -198,7 +206,7 @@ public final class PageAction {
             PageAction.this.pageContext.publishPageMessage(pme);
             return Result.ofError(pme);
         } catch (final RestCallError restCallError) {
-            if (!restCallError.isFieldValidationError()) {
+            if (restCallError.isUnexpectedError()) {
                 log.error("Failed to execute action: {} | error: {} | cause: {}",
                         PageAction.this.getName(),
                         restCallError.getMessage(),

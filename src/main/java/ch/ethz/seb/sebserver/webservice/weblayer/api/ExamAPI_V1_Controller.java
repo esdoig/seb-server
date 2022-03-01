@@ -115,7 +115,15 @@ public class ExamAPI_V1_Controller {
 
                     // Create and get new ClientConnection if all integrity checks passes
                     final ClientConnection clientConnection = this.sebClientConnectionService
-                            .createClientConnection(principal, institutionId, remoteAddr, examId, clientId)
+                            .createClientConnection(
+                                    principal,
+                                    institutionId,
+                                    remoteAddr,
+                                    mapper.getString(API.EXAM_API_PARAM_SEB_VERSION),
+                                    mapper.getString(API.EXAM_API_PARAM_SEB_OS_NAME),
+                                    mapper.getString(API.EXAM_API_PARAM_SEB_MACHINE_NAME),
+                                    examId,
+                                    clientId)
                             .getOrThrow();
 
                     response.setHeader(
@@ -131,7 +139,8 @@ public class ExamAPI_V1_Controller {
                                 .map(this::createRunningExamInfo)
                                 .collect(Collectors.toList());
                     } else {
-                        final Exam exam = this.examSessionService.getExamDAO().byPK(examId)
+                        final Exam exam = this.examSessionService.getExamDAO()
+                                .byPK(examId)
                                 .getOrThrow();
 
                         result = Arrays.asList(createRunningExamInfo(exam));
@@ -157,6 +166,9 @@ public class ExamAPI_V1_Controller {
             @RequestHeader(name = API.EXAM_API_SEB_CONNECTION_TOKEN, required = true) final String connectionToken,
             @RequestParam(name = API.EXAM_API_PARAM_EXAM_ID, required = false) final Long examId,
             @RequestParam(name = API.EXAM_API_USER_SESSION_ID, required = false) final String userSessionId,
+            @RequestParam(name = API.EXAM_API_PARAM_SEB_VERSION, required = false) final String sebVersion,
+            @RequestParam(name = API.EXAM_API_PARAM_SEB_OS_NAME, required = false) final String sebOSName,
+            @RequestParam(name = API.EXAM_API_PARAM_SEB_MACHINE_NAME, required = false) final String sebMachinName,
             @RequestParam(name = API.EXAM_API_PARAM_CLIENT_ID, required = false) final String clientId,
             final Principal principal,
             final HttpServletRequest request) {
@@ -172,6 +184,9 @@ public class ExamAPI_V1_Controller {
                             institutionId,
                             examId,
                             remoteAddr,
+                            sebVersion,
+                            sebOSName,
+                            sebMachinName,
                             userSessionId,
                             clientId)
                             .getOrThrow();
@@ -187,6 +202,9 @@ public class ExamAPI_V1_Controller {
             @RequestHeader(name = API.EXAM_API_SEB_CONNECTION_TOKEN, required = true) final String connectionToken,
             @RequestParam(name = API.EXAM_API_PARAM_EXAM_ID, required = false) final Long examId,
             @RequestParam(name = API.EXAM_API_USER_SESSION_ID, required = false) final String userSessionId,
+            @RequestParam(name = API.EXAM_API_PARAM_SEB_VERSION, required = false) final String sebVersion,
+            @RequestParam(name = API.EXAM_API_PARAM_SEB_OS_NAME, required = false) final String sebOSName,
+            @RequestParam(name = API.EXAM_API_PARAM_SEB_MACHINE_NAME, required = false) final String sebMachinName,
             @RequestParam(name = API.EXAM_API_PARAM_CLIENT_ID, required = false) final String clientId,
             final Principal principal,
             final HttpServletRequest request) {
@@ -202,6 +220,9 @@ public class ExamAPI_V1_Controller {
                             institutionId,
                             examId,
                             remoteAddr,
+                            sebVersion,
+                            sebOSName,
+                            sebMachinName,
                             userSessionId,
                             clientId)
                             .getOrThrow();
@@ -269,32 +290,31 @@ public class ExamAPI_V1_Controller {
         final String pingNumString = request.getParameter(API.EXAM_API_PING_NUMBER);
         final String instructionConfirm = request.getParameter(API.EXAM_API_PING_INSTRUCTION_CONFIRM);
 
-        if (log.isTraceEnabled()) {
-            log.trace("****************** SEB client connection: {} ip: {}",
-                    connectionToken,
-                    getClientAddress(request));
-        }
-
-        if (instructionConfirm != null) {
-            this.sebClientConnectionService.confirmInstructionDone(connectionToken, instructionConfirm);
+        long pingTime;
+        try {
+            pingTime = Long.parseLong(timeStampString);
+        } catch (final Exception e) {
+            log.error("Invalid ping request: {}", connectionToken);
+            response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+            return;
         }
 
         final String instruction = this.sebClientConnectionService
                 .notifyPing(
                         connectionToken,
-                        Long.parseLong(timeStampString),
-                        pingNumString != null ? Integer.parseInt(pingNumString) : -1);
+                        pingTime,
+                        pingNumString != null ? Integer.parseInt(pingNumString) : -1,
+                        instructionConfirm);
 
         if (instruction == null) {
             response.setStatus(HttpStatus.NO_CONTENT.value());
-            return;
-        }
-
-        try {
-            response.setStatus(HttpStatus.OK.value());
-            response.getOutputStream().write(instruction.getBytes());
-        } catch (final IOException e) {
-            log.error("Failed to send instruction as response: {}", connectionToken, e);
+        } else {
+            try {
+                response.setStatus(HttpStatus.OK.value());
+                response.getOutputStream().write(instruction.getBytes());
+            } catch (final IOException e) {
+                log.error("Failed to send instruction as response: {}", connectionToken, e);
+            }
         }
     }
 
@@ -342,6 +362,9 @@ public class ExamAPI_V1_Controller {
                         connectionToken,
                         institutionId,
                         Long.valueOf(examId),
+                        null,
+                        null,
+                        null,
                         null,
                         null,
                         null)

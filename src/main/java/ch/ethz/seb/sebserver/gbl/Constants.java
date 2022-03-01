@@ -24,6 +24,8 @@ import ch.ethz.seb.sebserver.gbl.api.authorization.Privilege;
 /** Global Constants used in SEB Server web-service as well as in web-gui component */
 public final class Constants {
 
+    public static final String FILE_EXT_CSV = ".csv";
+
     public static final String DEFAULT_LANG_CODE = "en";
     public static final String DEFAULT_TIME_ZONE_CODE = "UTC";
     public static final String TOOLTIP_TEXT_KEY_SUFFIX = ".tooltip";
@@ -42,6 +44,7 @@ public final class Constants {
 
     public static final int DAY_IN_MIN = 60 * 24;
 
+    public static final Character ENTER = '\r';
     public static final Character CARRIAGE_RETURN = '\n';
     public static final Character CURLY_BRACE_OPEN = '{';
     public static final Character CURLY_BRACE_CLOSE = '}';
@@ -51,6 +54,7 @@ public final class Constants {
     public static final Character ANGLE_BRACE_CLOSE = '>';
     public static final Character COLON = ':';
     public static final Character SEMICOLON = ';';
+    public static final Character SPACE = ' ';
     public static final Character PERCENTAGE = '%';
     public static final Character SLASH = '/';
     public static final Character BACKSLASH = '\\';
@@ -64,6 +68,7 @@ public final class Constants {
     public static final Character EQUALITY_SIGN = '=';
     public static final Character LIST_SEPARATOR_CHAR = COMMA;
     public static final Character COMPLEX_VALUE_SEPARATOR = COLON;
+    public static final Character HASH_TAG = '#';
 
     public static final String NULL = "null";
     public static final String PERCENTAGE_STRING = Constants.PERCENTAGE.toString();
@@ -76,19 +81,26 @@ public final class Constants {
     public static final String URL_PORT_SEPARATOR = COLON.toString();
     public static final String URL_ADDRESS_SEPARATOR = COLON.toString() + SLASH.toString() + SLASH.toString();
     public static final String URL_PATH_SEPARATOR = SLASH.toString();
+    public static final String HASH_TAG_STRING = HASH_TAG.toString();
 
     public static final String DYN_HTML_ATTR_OPEN = "%%_";
     public static final String DYN_HTML_ATTR_CLOSE = "_%%";
 
+    public static final String DEFAULT_DATE_TIME_MILLIS_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSS";
     public static final String DEFAULT_DATE_TIME_FORMAT = "yyyy-MM-dd'T'HH:mm:ss'Z'";
     public static final String TIME_ZONE_OFFSET_TAIL_FORMAT = "|ZZ";
 
-    //public static final String DEFAULT_DISPLAY_DATE_TIME_FORMAT = "MM-dd-yyyy HH:mm:ss";
-    public static final String DEFAULT_DISPLAY_DATE_FORMAT = "MM-dd-yyyy";
+    public static final String DEFAULT_DATE_FORMAT = "yyyy-MM-dd";
     public static final String DEFAULT_TIME_FORMAT = "HH:mm:ss";
 
+    public static final DateTimeFormatter STANDARD_DATE_TIME_MILLIS_FORMATTER = DateTimeFormat
+            .forPattern(DEFAULT_DATE_TIME_MILLIS_FORMAT)
+            .withZoneUTC();
     public static final DateTimeFormatter STANDARD_DATE_TIME_FORMATTER = DateTimeFormat
             .forPattern(DEFAULT_DATE_TIME_FORMAT)
+            .withZoneUTC();
+    public static final DateTimeFormatter STANDARD_DATE_FORMATTER = DateTimeFormat
+            .forPattern(DEFAULT_DATE_FORMAT)
             .withZoneUTC();
 
     public static final String XML_VERSION_HEADER =

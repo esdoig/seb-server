@@ -69,13 +69,13 @@ public class ExamSessionCacheService {
             cacheNames = CACHE_NAME_RUNNING_EXAM,
             key = "#examId",
             unless = "#result == null")
-    public Exam getRunningExam(final Long examId) {
+    public synchronized Exam getRunningExam(final Long examId) {
 
         if (log.isDebugEnabled()) {
             log.debug("Verify running exam for id: {}", examId);
         }
 
-        final Result<Exam> byPK = this.examDAO.byPK(examId);
+        final Result<Exam> byPK = this.examDAO.loadWithAdditionalAttributes(examId);
         if (byPK.hasError()) {
             log.error("Failed to find/load Exam with id {}", examId, byPK.getError());
             return null;

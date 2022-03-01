@@ -147,6 +147,29 @@ public class PaginationServiceImpl implements PaginationService {
         });
     }
 
+    @Override
+    public <T> Result<Page<T>> getPageOf(
+            final Integer pageNumber,
+            final Integer pageSize,
+            final String sort,
+            final String tableName,
+            final Supplier<Result<Collection<T>>> delegate) {
+
+        return Result.tryCatch(() -> {
+            //final SqlTable table = SqlTable.of(tableName);
+            final com.github.pagehelper.Page<Object> page =
+                    setPagination(pageNumber, pageSize, sort, tableName);
+
+            final Collection<T> list = delegate.get().getOrThrow();
+
+            return new Page<>(
+                    page.getPages(),
+                    page.getPageNum(),
+                    sort,
+                    list);
+        });
+    }
+
     private String verifySortColumnName(final String sort, final String columnName) {
 
         if (StringUtils.isBlank(sort)) {
@@ -246,7 +269,11 @@ public class PaginationServiceImpl implements PaginationService {
         final Map<String, String> examTableMap = new HashMap<>();
         examTableMap.put(Entity.FILTER_ATTR_INSTITUTION, institutionNameRef);
         examTableMap.put(Domain.EXAM.ATTR_LMS_SETUP_ID, lmsSetupNameRef);
-        examTableMap.put(Domain.EXAM.ATTR_TYPE, ExamRecordDynamicSqlSupport.type.name());
+
+        // NOTE: This seems not to work and I was not able to figure out why.
+        // Now the type sorting is done within secondary sort for exams.
+        //examTableMap.put(Domain.EXAM.ATTR_TYPE, "'" + ExamRecordDynamicSqlSupport.type.name() + "'");
+
         this.sortColumnMapping.put(ExamRecordDynamicSqlSupport.examRecord.name(), examTableMap);
         this.defaultSortColumn.put(ExamRecordDynamicSqlSupport.examRecord.name(), Domain.EXAM.ATTR_ID);
 

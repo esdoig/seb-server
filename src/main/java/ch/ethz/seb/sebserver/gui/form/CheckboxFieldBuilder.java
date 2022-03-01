@@ -44,14 +44,20 @@ public class CheckboxFieldBuilder extends FieldBuilder<String> {
             checkbox = builder.widgetFactory.buttonLocalized(
                     fieldGrid,
                     SWT.CHECK,
-                    this.label, this.tooltip);
+                    this.label,
+                    this.tooltip,
+                    this.label.name,
+                    getARIALabel(builder));
         } else {
             titleLabel = createTitleLabel(builder.formParent, builder, this);
             fieldGrid = createFieldGrid(builder.formParent, this.spanInput);
             checkbox = builder.widgetFactory.buttonLocalized(
                     fieldGrid,
                     SWT.CHECK,
-                    null, null);
+                    null,
+                    null,
+                    this.label.name,
+                    getARIALabel(builder));
         }
 
         final GridData gridData = new GridData(SWT.FILL, SWT.TOP, true, true);

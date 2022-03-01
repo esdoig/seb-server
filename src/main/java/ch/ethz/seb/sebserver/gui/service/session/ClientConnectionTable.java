@@ -9,11 +9,9 @@
 package ch.ethz.seb.sebserver.gui.service.session;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -39,15 +37,11 @@ import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Table;
 import org.eclipse.swt.widgets.TableColumn;
 import org.eclipse.swt.widgets.TableItem;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 
 import ch.ethz.seb.sebserver.gbl.Constants;
-import ch.ethz.seb.sebserver.gbl.api.API;
 import ch.ethz.seb.sebserver.gbl.api.EntityType;
-import ch.ethz.seb.sebserver.gbl.async.AsyncRunner;
 import ch.ethz.seb.sebserver.gbl.model.Domain;
 import ch.ethz.seb.sebserver.gbl.model.EntityKey;
 import ch.ethz.seb.sebserver.gbl.model.exam.Exam;
@@ -61,21 +55,15 @@ import ch.ethz.seb.sebserver.gui.service.ResourceService;
 import ch.ethz.seb.sebserver.gui.service.i18n.LocTextKey;
 import ch.ethz.seb.sebserver.gui.service.page.PageService;
 import ch.ethz.seb.sebserver.gui.service.page.impl.PageAction;
-import ch.ethz.seb.sebserver.gui.service.push.ServerPushContext;
-import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.RestCall;
-import ch.ethz.seb.sebserver.gui.service.remote.webservice.auth.DisposedOAuth2RestTemplateException;
 import ch.ethz.seb.sebserver.gui.service.session.IndicatorData.ThresholdColor;
 import ch.ethz.seb.sebserver.gui.widget.WidgetFactory;
 
-public final class ClientConnectionTable {
+public final class ClientConnectionTable implements FullPageMonitoringGUIUpdate {
 
-    private static final Logger log = LoggerFactory.getLogger(ClientConnectionTable.class);
-
-    private static final int[] TABLE_PROPORTIONS = new int[] { 3, 1, 2, 1 };
+    private static final int[] TABLE_PROPORTIONS = new int[] { 3, 3, 2, 1 };
 
     private static final int BOTTOM_PADDING = 20;
     private static final int NUMBER_OF_NONE_INDICATOR_COLUMNS = 3;
-    private static final String USER_SESSION_STATUS_FILTER_ATTRIBUTE = "USER_SESSION_STATUS_FILTER_ATTRIBUTE";
 
     private static final String INDICATOR_NAME_TEXT_KEY_PREFIX =
             "sebserver.exam.indicator.type.description.";
@@ -83,29 +71,23 @@ public final class ClientConnectionTable {
             new LocTextKey("sebserver.monitoring.connection.list.column.id");
     private final static LocTextKey CONNECTION_ID_TOOLTIP_TEXT_KEY =
             new LocTextKey("sebserver.monitoring.connection.list.column.id" + Constants.TOOLTIP_TEXT_KEY_SUFFIX);
-    private final static LocTextKey CONNECTION_ADDRESS_TEXT_KEY =
-            new LocTextKey("sebserver.monitoring.connection.list.column.address");
-    private final static LocTextKey CONNECTION_ADDRESS_TOOLTIP_TEXT_KEY =
-            new LocTextKey("sebserver.monitoring.connection.list.column.address" + Constants.TOOLTIP_TEXT_KEY_SUFFIX);
+    private final static LocTextKey CONNECTION_INFO_TEXT_KEY =
+            new LocTextKey("sebserver.monitoring.connection.list.column.info");
+    private final static LocTextKey CONNECTION_INFO_TOOLTIP_TEXT_KEY =
+            new LocTextKey("sebserver.monitoring.connection.list.column.info" + Constants.TOOLTIP_TEXT_KEY_SUFFIX);
     private final static LocTextKey CONNECTION_STATUS_TEXT_KEY =
             new LocTextKey("sebserver.monitoring.connection.list.column.status");
     private final static LocTextKey CONNECTION_STATUS_TOOLTIP_TEXT_KEY =
             new LocTextKey("sebserver.monitoring.connection.list.column.status" + Constants.TOOLTIP_TEXT_KEY_SUFFIX);
 
     private final PageService pageService;
-    private final AsyncRunner asyncRunner;
     private final Exam exam;
-    private final RestCall<Collection<ClientConnectionData>>.RestCallBuilder restCallBuilder;
-    private final ServerPushContext pushConext;
     private final boolean distributedSetup;
 
     private final Map<Long, IndicatorData> indicatorMapping;
     private final Table table;
     private final ColorData colorData;
     private final Function<ClientConnectionData, String> localizedClientConnectionStatusNameFunction;
-    private final EnumSet<ConnectionStatus> statusFilter;
-    private String statusFilterParam = "";
-    private boolean statusFilterChanged = false;
     private Consumer<Set<EntityKey>> selectionListener;
 
     private int tableWidth;
@@ -118,23 +100,16 @@ public final class ClientConnectionTable {
     private final Color lightFontColor;
 
     private boolean forceUpdateAll = false;
-    private boolean updateInProgress = false;
 
     public ClientConnectionTable(
             final PageService pageService,
             final Composite tableRoot,
-            final AsyncRunner asyncRunner,
             final Exam exam,
             final Collection<Indicator> indicators,
-            final RestCall<Collection<ClientConnectionData>>.RestCallBuilder restCallBuilder,
-            final ServerPushContext pushConext,
             final boolean distributedSetup) {
 
         this.pageService = pageService;
-        this.asyncRunner = asyncRunner;
         this.exam = exam;
-        this.restCallBuilder = restCallBuilder;
-        this.pushConext = pushConext;
         this.distributedSetup = distributedSetup;
 
         final WidgetFactory widgetFactory = pageService.getWidgetFactory();
@@ -154,8 +129,6 @@ public final class ClientConnectionTable {
 
         this.localizedClientConnectionStatusNameFunction =
                 resourceService.localizedClientConnectionStatusNameFunction();
-        this.statusFilter = EnumSet.noneOf(ConnectionStatus.class);
-        loadStatusFilter();
 
         this.table = widgetFactory.tableLocalized(tableRoot, SWT.MULTI | SWT.V_SCROLL);
         final GridLayout gridLayout = new GridLayout(3 + indicators.size(), false);
@@ -177,8 +150,8 @@ public final class ClientConnectionTable {
                 CONNECTION_ID_TOOLTIP_TEXT_KEY);
         widgetFactory.tableColumnLocalized(
                 this.table,
-                CONNECTION_ADDRESS_TEXT_KEY,
-                CONNECTION_ADDRESS_TOOLTIP_TEXT_KEY);
+                CONNECTION_INFO_TEXT_KEY,
+                CONNECTION_INFO_TOOLTIP_TEXT_KEY);
         widgetFactory.tableColumnLocalized(
                 this.table,
                 CONNECTION_STATUS_TEXT_KEY,
@@ -206,20 +179,6 @@ public final class ClientConnectionTable {
 
     public Exam getExam() {
         return this.exam;
-    }
-
-    public boolean isStatusHidden(final ConnectionStatus status) {
-        return this.statusFilter.contains(status);
-    }
-
-    public void hideStatus(final ConnectionStatus status) {
-        this.statusFilter.add(status);
-        saveStatusFilter();
-    }
-
-    public void showStatus(final ConnectionStatus status) {
-        this.statusFilter.remove(status);
-        saveStatusFilter();
     }
 
     public ClientConnectionTable withDefaultAction(final PageAction pageAction, final PageService pageService) {
@@ -323,64 +282,51 @@ public final class ClientConnectionTable {
         this.forceUpdateAll = true;
     }
 
-    public void updateValues() {
-        if (this.updateInProgress) {
-            return;
+    @Override
+    public void update(final MonitoringStatus monitoringStatus) {
+        final Collection<ClientConnectionData> connectionData = monitoringStatus.getConnectionData();
+
+        final boolean needsSync = monitoringStatus.statusFilterChanged() ||
+                this.forceUpdateAll ||
+                connectionData.size() != this.table.getItemCount() ||
+                (this.tableMapping != null &&
+                        this.table != null &&
+                        this.tableMapping.size() != this.table.getItemCount())
+                ||
+                this.distributedSetup;
+
+        if (needsSync) {
+            this.toDelete.clear();
+            this.toDelete.addAll(this.tableMapping.keySet());
         }
 
-        this.updateInProgress = true;
-        final boolean needsSync = this.tableMapping != null &&
-                this.table != null &&
-                this.tableMapping.size() != this.table.getItemCount();
-        this.asyncRunner.runAsync(() -> updateValuesAsync(needsSync));
-    }
-
-    private void updateValuesAsync(final boolean needsSync) {
-
-        try {
-            final boolean sync = this.statusFilterChanged || this.forceUpdateAll || needsSync || this.distributedSetup;
-            if (sync) {
-                this.toDelete.clear();
-                this.toDelete.addAll(this.tableMapping.keySet());
-            }
-            this.restCallBuilder
-                    .withHeader(API.EXAM_MONITORING_STATE_FILTER, this.statusFilterParam)
-                    .call()
-                    .get(error -> {
-                        recoverFromDisposedRestTemplate(error);
-                        this.pushConext.reportError(error);
-                        return Collections.emptyList();
-                    })
-                    .forEach(data -> {
-                        final UpdatableTableItem tableItem = this.tableMapping.computeIfAbsent(
-                                data.getConnectionId(),
-                                UpdatableTableItem::new);
-                        tableItem.push(data);
-                        if (sync) {
-                            this.toDelete.remove(data.getConnectionId());
-                        }
-                    });
-
-            if (!this.toDelete.isEmpty()) {
-                this.toDelete.forEach(id -> {
-                    final UpdatableTableItem item = this.tableMapping.remove(id);
-                    if (item != null) {
-                        final List<Long> list = this.sessionIds.get(item.connectionData.clientConnection.userSessionId);
-                        if (list != null) {
-                            list.remove(id);
-                        }
+        monitoringStatus.getConnectionData()
+                .forEach(data -> {
+                    final UpdatableTableItem tableItem = this.tableMapping.computeIfAbsent(
+                            data.getConnectionId(),
+                            UpdatableTableItem::new);
+                    tableItem.push(data);
+                    if (needsSync) {
+                        this.toDelete.remove(data.getConnectionId());
                     }
                 });
-                this.statusFilterChanged = false;
-                this.toDelete.clear();
-            }
 
-            this.forceUpdateAll = false;
-            this.updateInProgress = false;
-
-        } catch (final Exception e) {
-            this.pushConext.reportError(e);
+        if (!this.toDelete.isEmpty()) {
+            this.toDelete.forEach(id -> {
+                final UpdatableTableItem item = this.tableMapping.remove(id);
+                if (item != null) {
+                    final List<Long> list = this.sessionIds.get(item.connectionData.clientConnection.userSessionId);
+                    if (list != null) {
+                        list.remove(id);
+                    }
+                }
+            });
+            monitoringStatus.resetStatusFilterChanged();
+            this.toDelete.clear();
         }
+
+        this.forceUpdateAll = false;
+        updateGUI();
     }
 
     public void updateGUI() {
@@ -398,8 +344,7 @@ public final class ClientConnectionTable {
 
         this.needsSort = false;
         adaptTableWidth();
-        this.table.layout(true, true);
-
+        this.table.getParent().layout(true, true);
     }
 
     private void adaptTableWidth() {
@@ -452,44 +397,6 @@ public final class ClientConnectionTable {
                         (e1, e2) -> e1, LinkedHashMap::new));
     }
 
-    private void saveStatusFilter() {
-        try {
-            this.pageService
-                    .getCurrentUser()
-                    .putAttribute(
-                            USER_SESSION_STATUS_FILTER_ATTRIBUTE,
-                            StringUtils.join(this.statusFilter, Constants.LIST_SEPARATOR));
-        } catch (final Exception e) {
-            log.warn("Failed to save status filter to user session");
-        } finally {
-            this.statusFilterParam = StringUtils.join(this.statusFilter, Constants.LIST_SEPARATOR);
-            this.statusFilterChanged = true;
-        }
-    }
-
-    private void loadStatusFilter() {
-        try {
-            final String attribute = this.pageService
-                    .getCurrentUser()
-                    .getAttribute(USER_SESSION_STATUS_FILTER_ATTRIBUTE);
-            this.statusFilter.clear();
-            if (attribute != null) {
-                Arrays.asList(StringUtils.split(attribute, Constants.LIST_SEPARATOR))
-                        .forEach(name -> this.statusFilter.add(ConnectionStatus.valueOf(name)));
-
-            } else {
-                this.statusFilter.add(ConnectionStatus.DISABLED);
-            }
-        } catch (final Exception e) {
-            log.warn("Failed to load status filter to user session");
-            this.statusFilter.clear();
-            this.statusFilter.add(ConnectionStatus.DISABLED);
-        } finally {
-            this.statusFilterParam = StringUtils.join(this.statusFilter, Constants.LIST_SEPARATOR);
-            this.statusFilterChanged = true;
-        }
-    }
-
     private void notifySelectionChange() {
         if (this.selectionListener == null) {
             return;
@@ -524,10 +431,6 @@ public final class ClientConnectionTable {
         }
 
         private void update(final TableItem tableItem) {
-            if (ClientConnectionTable.this.statusFilter.contains(this.connectionData.clientConnection.status)) {
-                tableItem.dispose();
-                return;
-            }
             updateData(tableItem);
             if (this.connectionData != null) {
                 updateConnectionStatusColor(tableItem);
@@ -550,7 +453,7 @@ public final class ClientConnectionTable {
 
         private void updateData(final TableItem tableItem) {
             tableItem.setText(0, getConnectionIdentifier());
-            tableItem.setText(1, getConnectionAddress());
+            tableItem.setText(1, getConnectionInfo());
             tableItem.setText(
                     2,
                     ClientConnectionTable.this.localizedClientConnectionStatusNameFunction.apply(this.connectionData));
@@ -602,12 +505,14 @@ public final class ClientConnectionTable {
                 if (!this.connectionData.clientConnection.status.clientActiveStatus) {
                     final String value = (indicatorData.indicator.type.showOnlyInActiveState)
                             ? Constants.EMPTY_NOTE
-                            : IndicatorValue.getDisplayValue(indicatorValue);
+                            : IndicatorValue.getDisplayValue(indicatorValue, indicatorData.indicator.type);
                     tableItem.setText(indicatorData.tableIndex, value);
                     tableItem.setBackground(indicatorData.tableIndex, indicatorData.defaultColor);
                     tableItem.setForeground(indicatorData.tableIndex, indicatorData.defaultTextColor);
                 } else {
-                    tableItem.setText(indicatorData.tableIndex, IndicatorValue.getDisplayValue(indicatorValue));
+                    tableItem.setText(indicatorData.tableIndex, IndicatorValue.getDisplayValue(
+                            indicatorValue,
+                            indicatorData.indicator.type));
                     final int weight = this.indicatorWeights[indicatorData.index];
                     if (weight >= 0 && weight < indicatorData.thresholdColor.length) {
                         final ThresholdColor thresholdColor = indicatorData.thresholdColor[weight];
@@ -665,9 +570,9 @@ public final class ClientConnectionTable {
             return -this.thresholdsWeight;
         }
 
-        String getConnectionAddress() {
-            if (this.connectionData != null && this.connectionData.clientConnection.clientAddress != null) {
-                return this.connectionData.clientConnection.clientAddress;
+        String getConnectionInfo() {
+            if (this.connectionData != null && this.connectionData.clientConnection.info != null) {
+                return this.connectionData.clientConnection.info;
             }
             return Constants.EMPTY_NOTE;
         }
@@ -737,15 +642,6 @@ public final class ClientConnectionTable {
             return ClientConnectionTable.this;
         }
 
-    }
-
-    public void recoverFromDisposedRestTemplate(final Exception error) {
-        if (log.isDebugEnabled()) {
-            log.debug("Try to recover from disposed OAuth2 rest template...");
-        }
-        if (error instanceof DisposedOAuth2RestTemplateException) {
-            this.pageService.getRestService().injectCurrentRestTemplate(this.restCallBuilder);
-        }
     }
 
 }

@@ -29,11 +29,14 @@ public final class SingleSelection extends Combo implements Selection {
     final List<String> keyMapping;
     final boolean isEditable;
 
-    SingleSelection(final Composite parent, final int type) {
+    SingleSelection(final Composite parent, final int type, final String testKey) {
         super(parent, type);
         this.valueMapping = new ArrayList<>();
         this.keyMapping = new ArrayList<>();
         this.isEditable = type == SWT.NONE;
+        if (testKey != null) {
+            WidgetFactory.setTestId(this, testKey);
+        }
     }
 
     @Override
@@ -107,6 +110,11 @@ public final class SingleSelection extends Combo implements Selection {
             super.addListener(SWT.FocusOut, listener);
             super.addListener(SWT.Traverse, listener);
         }
+    }
+
+    @Override
+    public void setAriaLabel(final String label) {
+        WidgetFactory.setARIALabel(this, label);
     }
 
 }

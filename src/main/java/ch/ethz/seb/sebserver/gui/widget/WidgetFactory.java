@@ -14,10 +14,10 @@ import java.io.InputStream;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.Locale;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+import org.apache.commons.lang3.StringUtils;
 import org.eclipse.rap.rwt.RWT;
 import org.eclipse.rap.rwt.client.service.JavaScriptExecutor;
 import org.eclipse.rap.rwt.widgets.WidgetUtil;
@@ -67,11 +67,21 @@ import ch.ethz.seb.sebserver.gui.service.push.ServerPushService;
 public class WidgetFactory {
 
     private static final String ADD_HTML_ATTR_ARIA_ROLE = "role";
-    private static final String ADD_HTML_ATTR_TEST_ID = "test-id";
+    private static final String ADD_HTML_ATTR_ARIA_LABEL = "aria-label";
+    private static final String ADD_HTML_ATTR_TEST_ID = "data-test";
     private static final String SUB_TITLE_TExT_SUFFIX = ".subtitle";
 
     public enum AriaRole {
-        link
+        link,
+        button,
+        list,
+        listitem,
+        grid,
+        row,
+        rowgroup,
+        columnheader,
+        gridcell,
+        dialog
     }
 
     private static final Logger log = LoggerFactory.getLogger(WidgetFactory.class);
@@ -367,21 +377,24 @@ public class WidgetFactory {
 
     public Button buttonLocalized(final Composite parent, final String locTextKey) {
         final Button button = new Button(parent, SWT.NONE);
-        setAttribute(button, "role", "button");
+        setARIARole(button, AriaRole.button);
+        setTestId(button, locTextKey);
         this.polyglotPageService.injectI18n(button, new LocTextKey(locTextKey));
         return button;
     }
 
     public Button buttonLocalized(final Composite parent, final LocTextKey locTextKey) {
         final Button button = new Button(parent, SWT.NONE);
-        setAttribute(button, "role", "button");
+        setARIARole(button, AriaRole.button);
+        setTestId(button, locTextKey.name);
         this.polyglotPageService.injectI18n(button, locTextKey);
         return button;
     }
 
     public Button buttonLocalized(final Composite parent, final CustomVariant variant, final String locTextKey) {
         final Button button = new Button(parent, SWT.NONE);
-        setAttribute(button, "role", "button");
+        setARIARole(button, AriaRole.button);
+        setTestId(button, locTextKey);
         this.polyglotPageService.injectI18n(button, new LocTextKey(locTextKey));
         button.setData(RWT.CUSTOM_VARIANT, variant.key);
         return button;
@@ -391,10 +404,18 @@ public class WidgetFactory {
             final Composite parent,
             final int type,
             final LocTextKey locTextKey,
-            final LocTextKey toolTipKey) {
+            final LocTextKey toolTipKey,
+            final String testKey,
+            final LocTextKey ariaLabel) {
 
         final Button button = new Button(parent, type);
-        setAttribute(button, "role", "button");
+        setARIARole(button, AriaRole.button);
+        if (ariaLabel != null) {
+            setARIALabel(button, this.i18nSupport.getText(ariaLabel));
+        }
+        if (testKey != null) {
+            setTestId(button, testKey);
+        }
         this.polyglotPageService.injectI18n(button, locTextKey, toolTipKey);
         return button;
     }
@@ -461,40 +482,40 @@ public class WidgetFactory {
         return labelLocalized;
     }
 
-    public Text textInput(final Composite content, final LocTextKey label) {
-        return textInput(content, false, false, this.i18nSupport.getText(label));
+    public Text textInput(final Composite content, final LocTextKey ariaLabel) {
+        return textInput(content, false, false, ariaLabel.name, ariaLabel);
     }
 
-    public Text textInput(final Composite content, final String label) {
-        return textInput(content, false, false, label);
+    public Text textInput(final Composite content, final String testKey, final LocTextKey ariaLabel) {
+        return textInput(content, false, false, testKey, ariaLabel);
     }
 
-    public Text passwordInput(final Composite content, final LocTextKey label) {
-        return textInput(content, true, false, this.i18nSupport.getText(label));
+    public Text textInput(final Composite content, final String testKey, final String ariaLabel) {
+        final Text textInput = textInput(content, false, false, testKey, null);
+        if (ariaLabel != null) {
+            WidgetFactory.setARIALabel(textInput, this.i18nSupport.getText(ariaLabel));
+        }
+        return textInput;
     }
 
-    public Text passwordInput(final Composite content, final String label) {
-        return textInput(content, true, false, label);
-    }
-
-    public Text textAreaInput(
-            final Composite content,
-            final boolean readonly,
-            final LocTextKey label) {
-
-        return textAreaInput(content, readonly, this.i18nSupport.getText(label));
+    public Text passwordInput(final Composite content, final String testKey, final LocTextKey ariaLabel) {
+        return textInput(content, true, false, testKey, ariaLabel);
     }
 
     public Text textAreaInput(
             final Composite content,
             final boolean readonly,
-            final String label) {
+            final String testKey,
+            final LocTextKey ariaLabel) {
 
         final Text input = readonly
                 ? new Text(content, SWT.LEFT | SWT.MULTI)
                 : new Text(content, SWT.LEFT | SWT.BORDER | SWT.MULTI);
-        if (label != null) {
-            WidgetFactory.setAttribute(input, "aria-label", label);
+        if (ariaLabel != null) {
+            WidgetFactory.setARIALabel(input, this.i18nSupport.getText(ariaLabel));
+        }
+        if (testKey != null) {
+            setTestId(input, testKey);
         }
         return input;
     }
@@ -503,16 +524,8 @@ public class WidgetFactory {
             final Composite content,
             final boolean password,
             final boolean readonly,
-            final LocTextKey label) {
-
-        return textInput(content, password, readonly, this.i18nSupport.getText(label));
-    }
-
-    public Text textInput(
-            final Composite content,
-            final boolean password,
-            final boolean readonly,
-            final String label) {
+            final String testKey,
+            final LocTextKey ariaLabel) {
 
         final Text input = readonly
                 ? new Text(content, SWT.LEFT)
@@ -520,29 +533,35 @@ public class WidgetFactory {
                         ? SWT.LEFT | SWT.BORDER | SWT.PASSWORD
                         : SWT.LEFT | SWT.BORDER);
 
-        if (label != null) {
-            WidgetFactory.setAttribute(input, "aria-label", label);
+        if (ariaLabel != null) {
+            WidgetFactory.setARIALabel(input, this.i18nSupport.getText(ariaLabel));
+        }
+        if (testKey != null) {
+            setTestId(input, testKey);
         }
         return input;
-    }
-
-    public Text numberInput(final Composite content, final Consumer<String> numberCheck, final LocTextKey label) {
-        return numberInput(content, numberCheck, false, label);
     }
 
     public Text numberInput(
             final Composite content,
             final Consumer<String> numberCheck,
             final boolean readonly,
-            final LocTextKey label) {
+            final String testKey,
+            final LocTextKey ariaLabel) {
 
         final Text numberInput = new Text(content, (readonly) ? SWT.LEFT | SWT.READ_ONLY : SWT.RIGHT | SWT.BORDER);
-        if (label != null) {
-            WidgetFactory.setAttribute(numberInput, "aria-label", this.i18nSupport.getText(label));
+        if (ariaLabel != null) {
+            setARIALabel(numberInput, this.i18nSupport.getText(ariaLabel));
+        }
+        if (testKey != null) {
+            setTestId(numberInput, testKey);
         }
         if (numberCheck != null) {
             numberInput.addListener(SWT.Verify, event -> {
                 final String value = event.text;
+                if (StringUtils.isBlank(value)) {
+                    return;
+                }
                 try {
                     numberCheck.accept(value);
                 } catch (final Exception e) {
@@ -642,30 +661,39 @@ public class WidgetFactory {
     public Tree treeLocalized(final Composite parent, final int style) {
         final Tree tree = new Tree(parent, style);
         this.polyglotPageService.injectI18n(tree);
+        setARIARole(tree, AriaRole.list);
         return tree;
     }
 
     public TreeItem treeItemLocalized(final Tree parent, final String locTextKey) {
         final TreeItem item = new TreeItem(parent, SWT.NONE);
         this.polyglotPageService.injectI18n(item, new LocTextKey(locTextKey));
+        setARIARole(item, AriaRole.listitem);
+        setTestId(item, locTextKey);
         return item;
     }
 
     public TreeItem treeItemLocalized(final Tree parent, final LocTextKey locTextKey) {
         final TreeItem item = new TreeItem(parent, SWT.NONE);
         this.polyglotPageService.injectI18n(item, locTextKey);
+        setARIARole(item, AriaRole.listitem);
+        setTestId(item, locTextKey.name);
         return item;
     }
 
     public TreeItem treeItemLocalized(final TreeItem parent, final String locTextKey) {
         final TreeItem item = new TreeItem(parent, SWT.NONE);
         this.polyglotPageService.injectI18n(item, new LocTextKey(locTextKey));
+        setARIARole(item, AriaRole.listitem);
+        setTestId(item, locTextKey);
         return item;
     }
 
     public TreeItem treeItemLocalized(final TreeItem parent, final LocTextKey locTextKey) {
         final TreeItem item = new TreeItem(parent, SWT.NONE);
         this.polyglotPageService.injectI18n(item, locTextKey);
+        setARIARole(item, AriaRole.listitem);
+        setTestId(item, locTextKey.name);
         return item;
     }
 
@@ -728,54 +756,36 @@ public class WidgetFactory {
         return label;
     }
 
-    public Label imageButton(
+    public Label mandatoryLabel(
             final ImageIcon type,
             final Composite parent,
             final LocTextKey toolTip) {
 
-        return this.imageButton(type, parent, toolTip, null);
+        final Label imageButton = labelLocalized(parent, (LocTextKey) null, toolTip);
+        imageButton.setImage(type.getImage(parent.getDisplay()));
+        return imageButton;
     }
 
-    public Label imageButton(
+    public Button imageButton(
             final ImageIcon type,
             final Composite parent,
             final LocTextKey toolTip,
             final Listener listener) {
 
-        final Label imageButton = labelLocalized(parent, (LocTextKey) null, toolTip);
-        imageButton.setData(RWT.CUSTOM_VARIANT, CustomVariant.IMAGE_BUTTON.name());
-        imageButton.setImage(type.getImage(parent.getDisplay()));
+        final Button imageButton = new Button(parent, SWT.NONE);
+        this.polyglotPageService.injectI18n(imageButton, null, toolTip);
+        imageButton.setData(RWT.CUSTOM_VARIANT, CustomVariant.IMAGE_BUTTON.key);
+        final Image image = type.getImage(parent.getDisplay());
+        imageButton.setImage(image);
         if (listener != null) {
-            imageButton.addListener(SWT.MouseDown, listener);
+            imageButton.addListener(SWT.Selection, listener);
         }
+        setARIARole(imageButton, AriaRole.button);
+        if (toolTip != null) {
+            setARIALabel(imageButton, this.i18nSupport.getText(toolTip));
+        }
+        setTestId(imageButton, toolTip.name);
         return imageButton;
-    }
-
-    public Selection selectionLocalized(
-            final Selection.Type type,
-            final Composite parent,
-            final Supplier<List<Tuple<String>>> itemsSupplier) {
-
-        return this.selectionLocalized(type, parent, itemsSupplier, null, null);
-    }
-
-    public Selection selectionLocalized(
-            final Selection.Type type,
-            final Composite parent,
-            final Supplier<List<Tuple<String>>> itemsSupplier,
-            final LocTextKey toolTipTextKey) {
-
-        return this.selectionLocalized(type, parent, itemsSupplier, toolTipTextKey, null);
-    }
-
-    public Selection selectionLocalized(
-            final Selection.Type type,
-            final Composite parent,
-            final Supplier<List<Tuple<String>>> itemsSupplier,
-            final LocTextKey toolTipTextKey,
-            final Supplier<List<Tuple<String>>> itemsToolTipSupplier) {
-
-        return selectionLocalized(type, parent, itemsSupplier, toolTipTextKey, itemsToolTipSupplier, null);
     }
 
     public Selection selectionLocalized(
@@ -784,35 +794,36 @@ public class WidgetFactory {
             final Supplier<List<Tuple<String>>> itemsSupplier,
             final LocTextKey toolTipTextKey,
             final Supplier<List<Tuple<String>>> itemsToolTipSupplier,
-            final String actionLocTextPrefix) {
+            final String testKey,
+            final String ariaLabel) {
 
         final Selection selection;
         switch (type) {
             case SINGLE:
-                selection = new SingleSelection(parent, SWT.READ_ONLY);
+                selection = new SingleSelection(parent, SWT.READ_ONLY, testKey);
                 break;
             case SINGLE_COMBO:
-                selection = new SingleSelection(parent, SWT.NONE);
+                selection = new SingleSelection(parent, SWT.NONE, testKey);
                 break;
             case RADIO:
-                selection = new RadioSelection(parent);
+                selection = new RadioSelection(parent, testKey);
                 break;
             case MULTI:
-                selection = new MultiSelection(parent);
+                selection = new MultiSelection(parent, testKey);
                 break;
             case MULTI_COMBO:
                 selection = new MultiSelectionCombo(
                         parent,
                         this,
-                        actionLocTextPrefix,
+                        testKey,
                         // NOTE parent would work for firefox but on IE and Chrome only parent.getParent().getParent() works
                         parent.getParent().getParent());
                 break;
             case MULTI_CHECKBOX:
-                selection = new MultiSelectionCheckbox(parent);
+                selection = new MultiSelectionCheckbox(parent, testKey);
                 break;
             case COLOR:
-                selection = new ColorSelection(parent, this, actionLocTextPrefix);
+                selection = new ColorSelection(parent, this, testKey);
                 break;
             default:
                 throw new IllegalArgumentException("Unsupported Selection.Type: " + type);
@@ -836,33 +847,59 @@ public class WidgetFactory {
             updateFunction.accept(selection);
         }
 
+        if (ariaLabel != null) {
+            selection.setAriaLabel(ariaLabel);
+        }
+
         return selection;
     }
 
-    public DateTime dateSelector(final Composite parent) {
-        RWT.setLocale(Locale.GERMANY);
+    public DateTime dateSelector(final Composite parent, final LocTextKey label, final String testKey) {
+        RWT.setLocale(this.i18nSupport.getUsersFormatLocale());
         final GridData gridData = new GridData(SWT.FILL, SWT.FILL, true, true);
         final DateTime dateTime = new DateTime(parent, SWT.DATE | SWT.BORDER | SWT.DROP_DOWN);
         dateTime.setLayoutData(gridData);
+
+        if (label != null) {
+            setARIALabel(dateTime, this.i18nSupport.getText(label));
+        }
+        if (testKey != null) {
+            setTestId(dateTime, testKey);
+        }
         return dateTime;
     }
 
-    public DateTime timeSelector(final Composite parent) {
+    public DateTime timeSelector(final Composite parent, final LocTextKey label, final String testKey) {
         final GridData gridData = new GridData(SWT.FILL, SWT.FILL, true, true);
         final DateTime dateTime = new DateTime(parent, SWT.TIME | SWT.BORDER | SWT.SHORT);
         dateTime.setLayoutData(gridData);
+
+        if (label != null) {
+            setARIALabel(dateTime, this.i18nSupport.getText(label));
+        }
+        if (testKey != null) {
+            setTestId(dateTime, testKey);
+        }
         return dateTime;
     }
 
-    public DateTime timeSelectorWithSeconds(final Composite parent) {
+    public DateTime timeSelectorWithSeconds(final Composite parent, final LocTextKey label, final String testKey) {
         final GridData gridData = new GridData(SWT.FILL, SWT.FILL, true, true);
         final DateTime dateTime = new DateTime(parent, SWT.TIME | SWT.BORDER | SWT.MEDIUM);
         dateTime.setLayoutData(gridData);
+
+        if (label != null) {
+            setARIALabel(dateTime, this.i18nSupport.getText(label));
+        }
+        if (testKey != null) {
+            setTestId(dateTime, testKey);
+        }
         return dateTime;
     }
 
     public ColorDialog getColorDialog(final Composite parent) {
-        return new ColorDialog(parent.getShell(), SWT.NONE);
+        final ColorDialog colorDialog = new ColorDialog(parent.getShell(), SWT.NONE);
+        return colorDialog;
     }
 
     public ThresholdList thresholdList(
@@ -885,14 +922,16 @@ public class WidgetFactory {
     public ImageUploadSelection logoImageUploadLocalized(
             final Composite parent,
             final LocTextKey locTextKey,
-            final boolean readonly) {
+            final boolean readonly,
+            final LocTextKey label) {
 
         return imageUploadLocalized(
                 parent,
                 locTextKey,
                 readonly,
                 DefaultPageLayout.LOGO_IMAGE_MAX_WIDTH,
-                DefaultPageLayout.LOGO_IMAGE_MAX_HEIGHT);
+                DefaultPageLayout.LOGO_IMAGE_MAX_HEIGHT,
+                label);
     }
 
     public ImageUploadSelection imageUploadLocalized(
@@ -900,7 +939,8 @@ public class WidgetFactory {
             final LocTextKey locTextKey,
             final boolean readonly,
             final int maxWidth,
-            final int maxHeight) {
+            final int maxHeight,
+            final LocTextKey label) {
 
         final ImageUploadSelection imageUpload = new ImageUploadSelection(
                 parent,
@@ -908,7 +948,8 @@ public class WidgetFactory {
                 this.i18nSupport,
                 readonly,
                 maxWidth,
-                maxHeight);
+                maxHeight,
+                label);
 
         this.polyglotPageService.injectI18n(imageUpload, locTextKey);
         return imageUpload;
@@ -917,13 +958,16 @@ public class WidgetFactory {
     public FileUploadSelection fileUploadSelection(
             final Composite parent,
             final boolean readonly,
-            final Collection<String> supportedFiles) {
+            final Collection<String> supportedFiles,
+            final LocTextKey label) {
 
         final FileUploadSelection fileUploadSelection = new FileUploadSelection(
                 parent,
                 this.i18nSupport,
                 supportedFiles,
-                readonly);
+                readonly,
+                (label != null) ? label.name : null,
+                label);
 
         if (supportedFiles != null) {
             supportedFiles.forEach(fileUploadSelection::withSupportFor);
@@ -939,11 +983,35 @@ public class WidgetFactory {
         setAttribute(widget, ADD_HTML_ATTR_ARIA_ROLE, role.name());
     }
 
+    public static void setARIALabel(final Widget widget, final String label) {
+        setAttribute(
+                widget,
+                ADD_HTML_ATTR_ARIA_LABEL,
+                Utils.escapeHTML_XML_EcmaScript(label));
+    }
+
     public static void setAttribute(final Widget widget, final String name, final String value) {
+        if (StringUtils.isBlank(name) || StringUtils.isBlank(value)) {
+            log.warn("Missing name or value for HTML attribute: name {} value {}", name, value);
+            return;
+        }
         if (!widget.isDisposed()) {
             final String $el = widget instanceof Text ? "$input" : "$el";
             final String id = WidgetUtil.getId(widget);
             exec("rap.getObject( '", id, "' ).", $el, ".attr( '", name, "', '", value, "' );");
+            resetTabindex(widget);
+        }
+    }
+
+    public static void resetTabindex(final Widget widget) {
+        if (!widget.isDisposed()) {
+            final String $el = widget instanceof Text ? "$input" : "$el";
+            final String id = WidgetUtil.getId(widget);
+
+            exec("rap.getObject( '", id, "' ).", $el, ".attr( 'tabindex', '0' );");
+            if (widget instanceof Text) {
+                exec("rap.getObject( '", id, "' ).$el.attr( 'tabindex', '0' );");
+            }
         }
     }
 

@@ -9,6 +9,8 @@
 package ch.ethz.seb.sebserver.gbl.model.session;
 
 import java.math.BigDecimal;
+import java.util.HashSet;
+import java.util.Set;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -21,7 +23,7 @@ import ch.ethz.seb.sebserver.gbl.util.Utils;
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.model.ClientEventRecord;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class ClientEvent implements Entity, IndicatorValueHolder {
+public class ClientEvent implements Entity {
 
     /** Adapt SEB API to SEB_SEB_Server API -> timestamp == clientTime */
     public static final String ATTR_TIMESTAMP = "timestamp";
@@ -38,23 +40,35 @@ public class ClientEvent implements Entity, IndicatorValueHolder {
     public static final String FILTER_ATTR_SERVER_TIME_FROM_TO = "serverTimeFromTo";
 
     public static final String FILTER_ATTR_TEXT = Domain.CLIENT_EVENT.ATTR_TEXT;
+    private static final Set<Integer> NOTIFICATION_EVENTS = new HashSet<>();
 
     public enum EventType {
-        UNKNOWN(0),
-        DEBUG_LOG(1),
-        INFO_LOG(2),
-        WARN_LOG(3),
-        ERROR_LOG(4),
-        LAST_PING(5),
-        NOTIFICATION(6),
-        NOTIFICATION_CONFIRMED(7)
+        UNKNOWN(0, false),
+        DEBUG_LOG(1, false),
+        INFO_LOG(2, false),
+        WARN_LOG(3, false),
+        ERROR_LOG(4, false),
+        NOTIFICATION(6, true),
+        NOTIFICATION_CONFIRMED(7, true)
 
         ;
 
-        public final int id;
+        /** Points to formerly defined Event Type with LAST_PING */
+        public static final int REMOVED_EVENT_TYPE_LAST_PING = 5;
+        /** Points to formerly defined Event Type with NOTIFICATION */
+        public static final int REMOVED_EVENT_TYPE_NOTIFICATION = 6;
+        /** Points to formerly defined Event Type with NOTIFICATION_CONFIRMED */
+        public static final int REMOVED_EVENT_TYPE_NOTIFICATION_CONFIRMED = 7;
 
-        EventType(final int id) {
+        public final int id;
+        public final boolean isNotificationEvent;
+
+        EventType(final int id, final boolean isNotificationEvent) {
             this.id = id;
+            this.isNotificationEvent = isNotificationEvent;
+            if (isNotificationEvent) {
+                NOTIFICATION_EVENTS.add(id);
+            }
         }
 
         public static EventType byId(final int id) {
@@ -66,6 +80,18 @@ public class ClientEvent implements Entity, IndicatorValueHolder {
 
             return UNKNOWN;
         }
+
+        public static boolean isNotificationEvent(final Integer type) {
+            if (type == null) {
+                return false;
+            }
+
+            return NOTIFICATION_EVENTS.contains(type);
+        }
+    }
+
+    public enum ExportType {
+        CSV
     }
 
     @JsonProperty(Domain.CLIENT_EVENT.ATTR_ID)
@@ -149,7 +175,6 @@ public class ClientEvent implements Entity, IndicatorValueHolder {
         return this.numValue;
     }
 
-    @Override
     public double getValue() {
         return this.numValue != null
                 ? this.numValue

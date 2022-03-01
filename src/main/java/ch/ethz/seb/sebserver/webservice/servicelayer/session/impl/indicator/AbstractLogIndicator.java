@@ -24,11 +24,17 @@ import ch.ethz.seb.sebserver.gbl.util.Utils;
 
 public abstract class AbstractLogIndicator extends AbstractClientIndicator {
 
+    protected static final Long DISTRIBUTED_LOG_UPDATE_INTERVAL = 5 * Constants.SECOND_IN_MILLIS;
+
     protected final Set<EventType> observed;
     protected final List<Integer> eventTypeIds;
     protected String[] tags;
 
-    protected AbstractLogIndicator(final EventType... eventTypes) {
+    protected AbstractLogIndicator(
+            final DistributedIndicatorValueService distributedPingCache,
+            final EventType... eventTypes) {
+
+        super(distributedPingCache);
         this.observed = Collections.unmodifiableSet(EnumSet.of(eventTypes[0], eventTypes));
         this.eventTypeIds = Utils.immutableListOf(Arrays.stream(eventTypes)
                 .map(et -> et.id)
@@ -44,8 +50,8 @@ public abstract class AbstractLogIndicator extends AbstractClientIndicator {
             final boolean cachingEnabled) {
 
         super.init(indicatorDefinition, connectionId, active, cachingEnabled);
-        super.persistentUpdateInterval = 2 * Constants.SECOND_IN_MILLIS;
 
+        // init tags
         if (indicatorDefinition == null || StringUtils.isBlank(indicatorDefinition.tags)) {
             this.tags = null;
         } else {

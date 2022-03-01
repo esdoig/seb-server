@@ -20,6 +20,7 @@ import org.junit.Test;
 
 import com.fasterxml.jackson.databind.ObjectWriter;
 
+import ch.ethz.seb.sebserver.gbl.api.API.BulkActionType;
 import ch.ethz.seb.sebserver.gbl.api.APIMessage;
 import ch.ethz.seb.sebserver.gbl.api.EntityType;
 import ch.ethz.seb.sebserver.gbl.api.JSONMapper;
@@ -195,7 +196,7 @@ public class ModelObjectJSONGenerator {
                 1L, 1L, 1L, "externalId", "name", "description", DateTime.now(), DateTime.now(),
                 "startURL", ExamType.BYOD, "owner",
                 Arrays.asList("user1", "user2"),
-                ExamStatus.RUNNING, false, "browserExamKeys", true, null);
+                ExamStatus.RUNNING, false, "browserExamKeys", true, null, null, null, null);
         System.out.println(domainObject.getClass().getSimpleName() + ":");
         System.out.println(writerWithDefaultPrettyPrinter.writeValueAsString(domainObject));
 
@@ -244,16 +245,18 @@ public class ModelObjectJSONGenerator {
         System.out.println(writerWithDefaultPrettyPrinter.writeValueAsString(domainObject));
 
         domainObject =
-                new SimpleIndicatorValue(1L, IndicatorType.LAST_PING, 1.0);
+                new SimpleIndicatorValue(1L, 1.0);
         System.out.println(domainObject.getClass().getSimpleName() + ":");
         System.out.println(writerWithDefaultPrettyPrinter.writeValueAsString(domainObject));
         final long currentTimeMillis = System.currentTimeMillis();
         domainObject =
                 new ClientConnection(
                         1L, 1L, 1L, ConnectionStatus.ACTIVE, UUID.randomUUID().toString(),
-                        "user-account-1", "86.119.30.213", "vdiID", true, "", currentTimeMillis, currentTimeMillis,
-                        null,
-                        null);
+                        "user-account-1", "86.119.30.213",
+                        "seb_os_name", "seb_machine_name", "seb_version",
+                        "vdiID", true, "", currentTimeMillis, currentTimeMillis,
+                        123L,
+                        true);
         System.out.println(domainObject.getClass().getSimpleName() + ":");
         System.out.println(writerWithDefaultPrettyPrinter.writeValueAsString(domainObject));
 
@@ -262,13 +265,15 @@ public class ModelObjectJSONGenerator {
                 false,
                 new ClientConnection(
                         1L, 1L, 1L, ConnectionStatus.ACTIVE, UUID.randomUUID().toString(),
-                        "user-account-1", "86.119.30.213", "vdiID", true, "", currentTimeMillis, currentTimeMillis,
-                        null,
-                        null),
+                        "user-account-1", "86.119.30.213",
+                        "seb_os_name", "seb_machine_name", "seb_version",
+                        "vdiID", true, "", currentTimeMillis, currentTimeMillis,
+                        123L,
+                        true),
                 Arrays.asList(
-                        new SimpleIndicatorValue(1L, IndicatorType.LAST_PING, 1.0),
-                        new SimpleIndicatorValue(2L, IndicatorType.ERROR_COUNT, 2.0),
-                        new SimpleIndicatorValue(3L, IndicatorType.WARN_COUNT, 3.0)));
+                        new SimpleIndicatorValue(1L, 1.0),
+                        new SimpleIndicatorValue(2L, 2.0),
+                        new SimpleIndicatorValue(3L, 3.0)));
         System.out.println(domainObject.getClass().getSimpleName() + ":");
         System.out.println(writerWithDefaultPrettyPrinter.writeValueAsString(domainObject));
 
@@ -298,7 +303,8 @@ public class ModelObjectJSONGenerator {
                 Arrays.asList(new EntityKey(1L, EntityType.EXAM)),
                 Arrays.asList(new EntityKey(1L, EntityType.INDICATOR), new EntityKey(2L, EntityType.INDICATOR)),
                 Arrays.asList(new EntityProcessingReport.ErrorEntry(new EntityKey(2L, EntityType.INDICATOR),
-                        APIMessage.ErrorMessage.UNEXPECTED.of())));
+                        APIMessage.ErrorMessage.UNEXPECTED.of())),
+                BulkActionType.HARD_DELETE);
         System.out.println(domainObject.getClass().getSimpleName() + ":");
         System.out.println(writerWithDefaultPrettyPrinter.writeValueAsString(domainObject));
 

@@ -18,8 +18,10 @@ import ch.ethz.seb.sebserver.gbl.model.sebconfig.AttributeType;
 import ch.ethz.seb.sebserver.gbl.model.sebconfig.ConfigurationAttribute;
 import ch.ethz.seb.sebserver.gbl.model.sebconfig.Orientation;
 import ch.ethz.seb.sebserver.gbl.profile.GuiProfile;
+import ch.ethz.seb.sebserver.gui.service.examconfig.ExamConfigurationService;
 import ch.ethz.seb.sebserver.gui.service.examconfig.InputField;
 import ch.ethz.seb.sebserver.gui.service.examconfig.InputFieldBuilder;
+import ch.ethz.seb.sebserver.gui.service.i18n.I18nSupport;
 import ch.ethz.seb.sebserver.gui.widget.MultiSelectionCheckbox;
 import ch.ethz.seb.sebserver.gui.widget.Selection;
 import ch.ethz.seb.sebserver.gui.widget.WidgetFactory;
@@ -49,17 +51,21 @@ public class MultiCheckboxSelection extends SelectionFieldBuilder implements Inp
             final ConfigurationAttribute attribute,
             final ViewContext viewContext) {
 
+        final I18nSupport i18nSupport = this.widgetFactory.getI18nSupport();
         final Orientation orientation = viewContext
                 .getOrientation(attribute.id);
         final Composite innerGrid = InputFieldBuilder
                 .createInnerGrid(parent, attribute, orientation);
 
+        final String attributeNameKey = ExamConfigurationService.attributeNameKey(attribute);
         final MultiSelectionCheckbox selection = this.widgetFactory.selectionLocalized(
                 Selection.Type.MULTI_CHECKBOX,
                 innerGrid,
                 () -> this.getLocalizedResources(attribute, viewContext),
                 null,
-                () -> this.getLocalizedResourcesAsToolTip(attribute, viewContext))
+                () -> this.getLocalizedResourcesAsToolTip(attribute, viewContext),
+                attributeNameKey,
+                i18nSupport.getText(attributeNameKey))
                 .getTypeInstance();
 
         selection.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, false));

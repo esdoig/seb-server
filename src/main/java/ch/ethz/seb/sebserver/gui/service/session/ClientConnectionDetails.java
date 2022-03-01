@@ -25,6 +25,7 @@ import ch.ethz.seb.sebserver.gbl.model.Domain;
 import ch.ethz.seb.sebserver.gbl.model.exam.Exam;
 import ch.ethz.seb.sebserver.gbl.model.exam.Indicator;
 import ch.ethz.seb.sebserver.gbl.model.exam.QuizData;
+import ch.ethz.seb.sebserver.gbl.model.session.ClientConnection;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientConnectionData;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientNotification;
 import ch.ethz.seb.sebserver.gbl.model.session.IndicatorValue;
@@ -51,8 +52,8 @@ public class ClientConnectionDetails {
             new LocTextKey("sebserver.monitoring.connection.form.exam");
     private final static LocTextKey CONNECTION_ID_TEXT_KEY =
             new LocTextKey("sebserver.monitoring.connection.form.id");
-    private final static LocTextKey CONNECTION_ADDRESS_TEXT_KEY =
-            new LocTextKey("sebserver.monitoring.connection.form.address");
+    private final static LocTextKey CONNECTION_INFO_TEXT_KEY =
+            new LocTextKey("sebserver.monitoring.connection.form.info");
     private final static LocTextKey CONNECTION_STATUS_TEXT_KEY =
             new LocTextKey("sebserver.monitoring.connection.form.status");
 
@@ -68,6 +69,7 @@ public class ClientConnectionDetails {
 
     private ClientConnectionData connectionData = null;
     private boolean statusChanged = true;
+    private boolean missingChanged = true;
     private long startTime = -1;
     private Consumer<ClientConnectionData> statusChangeListener = null;
 
@@ -101,8 +103,8 @@ public class ClientConnectionDetails {
                         CONNECTION_ID_TEXT_KEY,
                         Constants.EMPTY_NOTE))
                 .addField(FormBuilder.text(
-                        Domain.CLIENT_CONNECTION.ATTR_CLIENT_ADDRESS,
-                        CONNECTION_ADDRESS_TEXT_KEY,
+                        ClientConnection.ATTR_INFO,
+                        CONNECTION_INFO_TEXT_KEY,
                         Constants.EMPTY_NOTE))
                 .withDefaultSpanInput(3)
                 .addField(FormBuilder.text(
@@ -142,9 +144,9 @@ public class ClientConnectionDetails {
 
         if (this.connectionData != null && connectionData != null) {
             this.statusChanged =
-                    this.connectionData.clientConnection.status != connectionData.clientConnection.status ||
-                            BooleanUtils.toBoolean(this.connectionData.missingPing) != BooleanUtils
-                                    .toBoolean(connectionData.missingPing);
+                    this.connectionData.clientConnection.status != connectionData.clientConnection.status;
+            this.missingChanged = BooleanUtils.toBoolean(this.connectionData.missingPing) != BooleanUtils
+                    .toBoolean(connectionData.missingPing);
         }
         this.connectionData = connectionData;
         if (this.startTime < 0) {
@@ -156,14 +158,14 @@ public class ClientConnectionDetails {
             final Supplier<EntityTable<ClientNotification>> notificationTableSupplier,
             final PageContext pageContext) {
 
+        if (this.connectionData == null) {
+            return;
+        }
+
         // Note: This is to update the whole page (by reload) only when the status has changed
         //       while this page was open. This prevent constant page reloads.
         if (this.statusChanged && System.currentTimeMillis() - this.startTime > Constants.SECOND_IN_MILLIS) {
             reloadPage(pageContext);
-            return;
-        }
-
-        if (this.connectionData == null) {
             return;
         }
 
@@ -173,10 +175,10 @@ public class ClientConnectionDetails {
                 this.connectionData.clientConnection.userSessionId);
 
         form.setFieldValue(
-                Domain.CLIENT_CONNECTION.ATTR_CLIENT_ADDRESS,
-                this.connectionData.clientConnection.clientAddress);
+                ClientConnection.ATTR_INFO,
+                this.connectionData.clientConnection.info);
 
-        if (this.statusChanged) {
+        if (this.missingChanged) {
             // update status
             form.setFieldValue(
                     Domain.CLIENT_CONNECTION.ATTR_STATUS,
@@ -196,7 +198,7 @@ public class ClientConnectionDetails {
                 .forEach(indValue -> {
                     final IndicatorData indData = this.indicatorMapping.get(indValue.getIndicatorId());
                     final double value = indValue.getValue();
-                    final String displayValue = IndicatorValue.getDisplayValue(indValue);
+                    final String displayValue = IndicatorValue.getDisplayValue(indValue, indData.indicator.type);
 
                     if (!this.connectionData.clientConnection.status.clientActiveStatus) {
 

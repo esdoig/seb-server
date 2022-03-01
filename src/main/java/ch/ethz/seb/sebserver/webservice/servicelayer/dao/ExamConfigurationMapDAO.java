@@ -50,7 +50,7 @@ public interface ExamConfigurationMapDAO extends
     Result<Long> getUserConfigurationNodeId(final Long examId, final String userId);
 
     /** Get a list of all ConfigurationNode identifiers of configurations that currently are attached to a given Exam
-     * 
+     *
      * @param examId the Exam identifier
      * @return Result refers to a list of ConfigurationNode identifiers or refer to an error if happened */
     Result<Collection<Long>> getConfigurationNodeIds(Long examId);
@@ -66,5 +66,14 @@ public interface ExamConfigurationMapDAO extends
      * @param configurationId the configuration identifier
      * @return Result referencing the List of exam identifiers (PK) for a given configuration identifier */
     Result<Collection<Long>> getExamIdsForConfigId(Long configurationId);
+
+    /** Use this to check if a specified exam configuration don't have any relations
+     * to an currently active exam, meaning in upcoming or running state.
+     * Exams in finished state are not active and will not go into account here.
+     *
+     * @param configurationNodeId the identifier of exam configuration to check
+     * @return Result refer to true if config has no relations to active exams, or false of it has or refer to an error
+     *         if happened */
+    Result<Boolean> checkNoActiveExamReferences(Long configurationNodeId);
 
 }

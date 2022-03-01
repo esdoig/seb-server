@@ -22,8 +22,11 @@ import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.ClientEventRecord
 @Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 public final class ErrorLogCountClientIndicator extends AbstractLogLevelCountIndicator {
 
-    protected ErrorLogCountClientIndicator(final ClientEventRecordMapper clientEventRecordMapper) {
-        super(clientEventRecordMapper, EventType.ERROR_LOG);
+    protected ErrorLogCountClientIndicator(
+            final DistributedIndicatorValueService distributedPingCache,
+            final ClientEventRecordMapper clientEventRecordMapper) {
+
+        super(distributedPingCache, clientEventRecordMapper, EventType.ERROR_LOG);
     }
 
     @Override

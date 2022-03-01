@@ -13,6 +13,7 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Set;
@@ -34,7 +35,9 @@ import ch.ethz.seb.sebserver.gbl.api.APIMessage.ErrorMessage;
 import ch.ethz.seb.sebserver.gbl.model.exam.Exam;
 import ch.ethz.seb.sebserver.gbl.model.exam.Exam.ExamStatus;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientConnection;
+import ch.ethz.seb.sebserver.gbl.model.session.ClientConnection.ConnectionStatus;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientConnectionData;
+import ch.ethz.seb.sebserver.gbl.model.session.MonitoringSEBConnectionData;
 import ch.ethz.seb.sebserver.gbl.profile.WebServiceProfile;
 import ch.ethz.seb.sebserver.gbl.util.Result;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.ClientConnectionDAO;
@@ -60,7 +63,9 @@ public class ExamSessionServiceImpl implements ExamSessionService {
     private final ExamConfigurationMapDAO examConfigurationMapDAO;
     private final CacheManager cacheManager;
     private final SEBRestrictionService sebRestrictionService;
+    private final boolean checkExamSupporter;
     private final boolean distributedSetup;
+    private final long distributedConnectionUpdate;
 
     private long lastConnectionTokenCacheUpdate = 0;
 
@@ -72,7 +77,9 @@ public class ExamSessionServiceImpl implements ExamSessionService {
             final IndicatorDAO indicatorDAO,
             final CacheManager cacheManager,
             final SEBRestrictionService sebRestrictionService,
-            @Value("${sebserver.webservice.distributed:false}") final boolean distributedSetup) {
+            @Value("${sebserver.webservice.exam.check.supporter:false}") final boolean checkExamSupporter,
+            @Value("${sebserver.webservice.distributed:false}") final boolean distributedSetup,
+            @Value("${sebserver.webservice.distributed.connectionUpdate:2000}") final long distributedConnectionUpdate) {
 
         this.examSessionCacheService = examSessionCacheService;
         this.examDAO = examDAO;
@@ -81,7 +88,9 @@ public class ExamSessionServiceImpl implements ExamSessionService {
         this.cacheManager = cacheManager;
         this.indicatorDAO = indicatorDAO;
         this.sebRestrictionService = sebRestrictionService;
+        this.checkExamSupporter = checkExamSupporter;
         this.distributedSetup = distributedSetup;
+        this.distributedConnectionUpdate = distributedConnectionUpdate;
     }
 
     @Override
@@ -114,9 +123,11 @@ public class ExamSessionServiceImpl implements ExamSessionService {
         return Result.tryCatch(() -> {
             final Collection<APIMessage> result = new ArrayList<>();
 
-            final Exam exam = this.examDAO
-                    .byPK(examId)
-                    .getOrThrow();
+            final Exam exam = (this.isExamRunning(examId))
+                    ? this.examSessionCacheService.getRunningExam(examId)
+                    : this.examDAO
+                            .byPK(examId)
+                            .getOrThrow();
 
             // check lms connection
             if (exam.status == ExamStatus.CORRUPT_NO_LMS_CONNECTION) {
@@ -128,7 +139,7 @@ public class ExamSessionServiceImpl implements ExamSessionService {
 
             if (exam.status == ExamStatus.RUNNING) {
                 // check exam supporter
-                if (exam.getSupporter().isEmpty()) {
+                if (this.checkExamSupporter && exam.getSupporter().isEmpty()) {
                     result.add(ErrorMessage.EXAM_CONSISTENCY_VALIDATION_SUPPORTER.of(exam.getModelId()));
                 }
 
@@ -159,17 +170,6 @@ public class ExamSessionServiceImpl implements ExamSessionService {
     }
 
     @Override
-    public boolean hasActiveSEBClientConnections(final Long examId) {
-        if (examId == null || !this.isExamRunning(examId)) {
-            return false;
-        }
-
-        return !this.getConnectionData(examId, ExamSessionService::isActiveConnection)
-                .getOrThrow()
-                .isEmpty();
-    }
-
-    @Override
     public boolean hasDefaultConfigurationAttached(final Long examId) {
         return !this.examConfigurationMapDAO
                 .getDefaultConfigurationNode(examId)
@@ -193,7 +193,8 @@ public class ExamSessionServiceImpl implements ExamSessionService {
     }
 
     @Override
-    public Result<Exam> getRunningExam(final Long examId) {
+    public synchronized Result<Exam> getRunningExam(final Long examId) {
+
         if (log.isTraceEnabled()) {
             log.trace("Running exam request for exam {}", examId);
         }
@@ -212,6 +213,7 @@ public class ExamSessionServiceImpl implements ExamSessionService {
             return Result.of(exam);
         } else {
             if (exam != null) {
+                log.info("Exam {} is not running anymore. Flush caches", exam);
                 flushCache(exam);
             }
 
@@ -224,7 +226,7 @@ public class ExamSessionServiceImpl implements ExamSessionService {
 
     @Override
     public Result<Collection<Exam>> getRunningExamsForInstitution(final Long institutionId) {
-        return this.examDAO.allIdsOfInstitution(institutionId)
+        return this.examDAO.allIdsOfRunning(institutionId)
                 .map(col -> col.stream()
                         .map(this::getRunningExam)
                         .filter(Result::hasValue)
@@ -354,6 +356,38 @@ public class ExamSessionServiceImpl implements ExamSessionService {
     }
 
     @Override
+    public Result<MonitoringSEBConnectionData> getMonitoringSEBConnectionsData(
+            final Long examId,
+            final Predicate<ClientConnectionData> filter) {
+
+        return Result.tryCatch(() -> {
+
+            // needed to store connection numbers per status
+            final int[] statusMapping = new int[ConnectionStatus.values().length];
+            for (int i = 0; i < statusMapping.length; i++) {
+                statusMapping[i] = 0;
+            }
+
+            updateClientConnections(examId);
+
+            final List<ClientConnectionData> filteredConnections = this.clientConnectionDAO
+                    .getConnectionTokens(examId)
+                    .getOrThrow()
+                    .stream()
+                    .map(token -> getConnectionData(token).getOr(null))
+                    .filter(Objects::nonNull)
+                    .map(c -> {
+                        statusMapping[c.clientConnection.status.code]++;
+                        return c;
+                    })
+                    .filter(filter)
+                    .collect(Collectors.toList());
+
+            return new MonitoringSEBConnectionData(examId, filteredConnections, statusMapping);
+        });
+    }
+
+    @Override
     public Result<Collection<String>> getActiveConnectionTokens(final Long examId) {
         return this.clientConnectionDAO
                 .getActiveConnctionTokens(examId);
@@ -361,12 +395,13 @@ public class ExamSessionServiceImpl implements ExamSessionService {
 
     @Override
     public Result<Exam> updateExamCache(final Long examId) {
+
         final Exam exam = this.examSessionCacheService.getRunningExam(examId);
         if (exam == null) {
             return Result.ofEmpty();
         }
 
-        final Boolean isUpToDate = this.examDAO.upToDate(examId, exam.lastUpdate)
+        final Boolean isUpToDate = this.examDAO.upToDate(exam)
                 .onError(t -> log.error("Failed to verify if cached exam is up to date: {}", exam, t))
                 .getOr(false);
 
@@ -379,6 +414,11 @@ public class ExamSessionServiceImpl implements ExamSessionService {
 
     @Override
     public Result<Exam> flushCache(final Exam exam) {
+
+        if (log.isDebugEnabled()) {
+            log.debug("Flush monitoring session caches for exam: {}", exam);
+        }
+
         return Result.tryCatch(() -> {
             this.examSessionCacheService.evict(exam);
             this.examSessionCacheService.evictDefaultSEBConfig(exam.id);
@@ -395,13 +435,13 @@ public class ExamSessionServiceImpl implements ExamSessionService {
     }
 
     // If we are in a distributed setup the active connection token cache get flushed
-    // at least every second. This allows caching over multiple monitoring requests but
-    // ensure an update every second for new incoming connections
+    // in specified time interval. This allows caching over multiple monitoring requests but
+    // ensure an update every now and then for new incoming connections
     private void updateClientConnections(final Long examId) {
-
         try {
+            final long currentTimeMillis = System.currentTimeMillis();
             if (this.distributedSetup &&
-                    System.currentTimeMillis() - this.lastConnectionTokenCacheUpdate > Constants.SECOND_IN_MILLIS) {
+                    currentTimeMillis - this.lastConnectionTokenCacheUpdate > this.distributedConnectionUpdate) {
 
                 // go trough all client connection and update the ones that not up to date
                 this.clientConnectionDAO.evictConnectionTokenCache(examId);
@@ -420,7 +460,7 @@ public class ExamSessionServiceImpl implements ExamSessionService {
                         .stream()
                         .forEach(this.examSessionCacheService::evictClientConnection);
 
-                this.lastConnectionTokenCacheUpdate = System.currentTimeMillis();
+                this.lastConnectionTokenCacheUpdate = currentTimeMillis;
             }
         } catch (final Exception e) {
             log.error("Unexpected error while trying to update client connections: ", e);

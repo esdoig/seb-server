@@ -26,6 +26,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import ch.ethz.seb.sebserver.gbl.Constants;
 import ch.ethz.seb.sebserver.gbl.profile.WebServiceProfile;
+import ch.ethz.seb.sebserver.webservice.servicelayer.dao.WebserviceInfoDAO;
 
 @Lazy
 @Service
@@ -60,9 +61,18 @@ public class WebserviceInfo {
     private final boolean isDistributed;
     private final String webserviceUUID;
 
+    private final long distributedUpdateInterval;
+
     private Map<String, String> lmsExternalAddressAlias;
 
-    public WebserviceInfo(final Environment environment) {
+    private final WebserviceInfoDAO webserviceInfoDAO;
+    private boolean isMaster = false;
+
+    public WebserviceInfo(
+            final WebserviceInfoDAO webserviceInfoDAO,
+            final Environment environment) {
+
+        this.webserviceInfoDAO = webserviceInfoDAO;
         this.webserviceUUID = UUID.randomUUID().toString();
         this.sebServerVersion = environment.getRequiredProperty(VERSION_KEY);
         this.testProperty = environment.getProperty(WEB_SERVICE_TEST_PROPERTY, "NOT_AVAILABLE");
@@ -73,6 +83,11 @@ public class WebserviceInfo {
         this.webserverPort = environment.getProperty(WEB_SERVICE_HTTP_PORT);
         this.discoveryEndpoint = environment.getRequiredProperty(WEB_SERVICE_EXAM_API_DISCOVERY_ENDPOINT_KEY);
         this.contextPath = environment.getProperty(WEB_SERVICE_CONTEXT_PATH, "");
+
+        this.distributedUpdateInterval = environment.getProperty(
+                "sebserver.webservice.distributed.updateInterval",
+                Long.class,
+                3000L);
 
         if (StringUtils.isEmpty(this.webserverName)) {
             log.warn("NOTE: External server name, property : 'sebserver.webservice.http.external.servername' "
@@ -114,6 +129,14 @@ public class WebserviceInfo {
         } else {
             this.lmsExternalAddressAlias = Collections.emptyMap();
         }
+    }
+
+    public boolean isMaster() {
+        return this.isMaster;
+    }
+
+    public void updateMaster() {
+        this.isMaster = this.webserviceInfoDAO.isMaster(this.getWebserviceUUID());
     }
 
     public String getWebserviceUUID() {
@@ -158,6 +181,10 @@ public class WebserviceInfo {
 
     public String getDiscoveryEndpointAddress() {
         return this.serverURLPrefix + this.discoveryEndpoint;
+    }
+
+    public long getDistributedUpdateInterval() {
+        return this.distributedUpdateInterval;
     }
 
     public String getLocalHostName() {

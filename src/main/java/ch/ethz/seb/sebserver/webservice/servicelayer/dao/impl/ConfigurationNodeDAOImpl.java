@@ -19,6 +19,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.StringUtils;
 import org.mybatis.dynamic.sql.SqlBuilder;
 import org.mybatis.dynamic.sql.select.MyBatis3SelectModelAdapter;
 import org.mybatis.dynamic.sql.select.QueryExpressionDSL;
@@ -91,14 +92,21 @@ public class ConfigurationNodeDAOImpl implements ConfigurationNodeDAO {
     @Override
     @Transactional(readOnly = true)
     public Result<Collection<ConfigurationNode>> allOf(final Set<Long> pks) {
-        return Result.tryCatch(() -> this.configurationNodeRecordMapper.selectByExample()
-                .where(ConfigurationNodeRecordDynamicSqlSupport.id, isIn(new ArrayList<>(pks)))
-                .build()
-                .execute()
-                .stream()
-                .map(ConfigurationNodeDAOImpl::toDomainModel)
-                .flatMap(DAOLoggingSupport::logAndSkipOnError)
-                .collect(Collectors.toList()));
+        return Result.tryCatch(() -> {
+
+            if (pks == null || pks.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            return this.configurationNodeRecordMapper.selectByExample()
+                    .where(ConfigurationNodeRecordDynamicSqlSupport.id, isIn(new ArrayList<>(pks)))
+                    .build()
+                    .execute()
+                    .stream()
+                    .map(ConfigurationNodeDAOImpl::toDomainModel)
+                    .flatMap(DAOLoggingSupport::logAndSkipOnError)
+                    .collect(Collectors.toList());
+        });
     }
 
     @Override
@@ -116,17 +124,15 @@ public class ConfigurationNodeDAOImpl implements ConfigurationNodeDAO {
                                     .on(InstitutionRecordDynamicSqlSupport.id,
                                             SqlBuilder.equalTo(ConfigurationNodeRecordDynamicSqlSupport.institutionId))
                                     .where(
-                                            ConfigurationNodeRecordDynamicSqlSupport.status,
-                                            SqlBuilder.isEqualToWhenPresent(filterMap.getConfigNodeStatus()))
+                                            ConfigurationNodeRecordDynamicSqlSupport.institutionId,
+                                            SqlBuilder.isEqualToWhenPresent(filterMap.getInstitutionId()))
                             : this.configurationNodeRecordMapper
                                     .selectByExample()
                                     .where(
-                                            ConfigurationNodeRecordDynamicSqlSupport.status,
-                                            SqlBuilder.isEqualToWhenPresent(filterMap.getConfigNodeStatus()));
+                                            ConfigurationNodeRecordDynamicSqlSupport.institutionId,
+                                            SqlBuilder.isEqualToWhenPresent(filterMap.getInstitutionId()));
 
-            return whereClause.and(
-                    ConfigurationNodeRecordDynamicSqlSupport.institutionId,
-                    SqlBuilder.isEqualToWhenPresent(filterMap.getInstitutionId()))
+            whereClause
                     .and(
                             ConfigurationNodeRecordDynamicSqlSupport.name,
                             SqlBuilder.isLikeWhenPresent(filterMap.getName()))
@@ -138,7 +144,20 @@ public class ConfigurationNodeDAOImpl implements ConfigurationNodeDAO {
                             SqlBuilder.isEqualToWhenPresent(filterMap.getConfigNodeType()))
                     .and(
                             ConfigurationNodeRecordDynamicSqlSupport.templateId,
-                            SqlBuilder.isEqualToWhenPresent(filterMap.getConfigNodeTemplateId()))
+                            SqlBuilder.isEqualToWhenPresent(filterMap.getConfigNodeTemplateId()));
+
+            final String status = filterMap.getConfigNodeStatus();
+            if (StringUtils.isBlank(status)) {
+                whereClause.and(
+                        ConfigurationNodeRecordDynamicSqlSupport.status,
+                        SqlBuilder.isNotEqualToWhenPresent(ConfigurationStatus.ARCHIVED.name()));
+            } else {
+                whereClause.and(
+                        ConfigurationNodeRecordDynamicSqlSupport.status,
+                        SqlBuilder.isEqualToWhenPresent(filterMap.getConfigNodeStatus()));
+            }
+
+            return whereClause
                     .build()
                     .execute()
                     .stream()
@@ -185,38 +204,22 @@ public class ConfigurationNodeDAOImpl implements ConfigurationNodeDAO {
     @Override
     @Transactional
     public Result<ConfigurationNode> save(final ConfigurationNode data) {
-        return Result.tryCatch(() -> {
+        return checkUniqueName(data)
+                .map(_d -> {
 
-            final Long count = this.configurationNodeRecordMapper.countByExample()
-                    .where(
-                            ConfigurationNodeRecordDynamicSqlSupport.name,
-                            isEqualTo(data.name))
-                    .and(
-                            ConfigurationNodeRecordDynamicSqlSupport.id,
-                            isNotEqualTo(data.id))
-                    .and(
-                            ConfigurationNodeRecordDynamicSqlSupport.institutionId,
-                            isNotEqualTo(data.institutionId))
-                    .build()
-                    .execute();
+                    final ConfigurationNodeRecord newRecord = new ConfigurationNodeRecord(
+                            data.id,
+                            null,
+                            null,
+                            null,
+                            data.name,
+                            data.description,
+                            null,
+                            (data.status != null) ? data.status.name() : ConfigurationStatus.CONSTRUCTION.name());
 
-            if (count != null && count > 0) {
-                throw new FieldValidationException("name", "configurationNode:name:exists");
-            }
-
-            final ConfigurationNodeRecord newRecord = new ConfigurationNodeRecord(
-                    data.id,
-                    null,
-                    null,
-                    null,
-                    data.name,
-                    data.description,
-                    null,
-                    (data.status != null) ? data.status.name() : ConfigurationStatus.CONSTRUCTION.name());
-
-            this.configurationNodeRecordMapper.updateByPrimaryKeySelective(newRecord);
-            return this.configurationNodeRecordMapper.selectByPrimaryKey(data.id);
-        })
+                    this.configurationNodeRecordMapper.updateByPrimaryKeySelective(newRecord);
+                    return this.configurationNodeRecordMapper.selectByPrimaryKey(data.id);
+                })
                 .flatMap(ConfigurationNodeDAOImpl::toDomainModel)
                 .onError(TransactionHandler::rollback);
     }
@@ -240,6 +243,10 @@ public class ConfigurationNodeDAOImpl implements ConfigurationNodeDAO {
         return Result.tryCatch(() -> {
 
             final List<Long> ids = extractListOfPKs(all);
+
+            if (ids == null || ids.isEmpty()) {
+                return Collections.emptyList();
+            }
 
             // find all configurations for this configuration node
             final List<Long> configurationIds = this.configurationRecordMapper.selectIdsByExample()
@@ -313,6 +320,32 @@ public class ConfigurationNodeDAOImpl implements ConfigurationNodeDAO {
                         String.valueOf(id));
             }
             return record;
+        });
+    }
+
+    private Result<ConfigurationNode> checkUniqueName(final ConfigurationNode data) {
+        return Result.tryCatch(() -> {
+            final Long count = this.configurationNodeRecordMapper.countByExample()
+                    .where(
+                            ConfigurationNodeRecordDynamicSqlSupport.name,
+                            isEqualTo(data.name))
+                    .and(
+                            ConfigurationNodeRecordDynamicSqlSupport.type,
+                            isNotEqualTo(data.type.name()))
+                    .and(
+                            ConfigurationNodeRecordDynamicSqlSupport.id,
+                            isNotEqualTo(data.id))
+                    .and(
+                            ConfigurationNodeRecordDynamicSqlSupport.institutionId,
+                            isNotEqualTo(data.institutionId))
+                    .build()
+                    .execute();
+
+            if (count != null && count > 0) {
+                throw new FieldValidationException("name", "configurationNode:name:exists");
+            }
+
+            return data;
         });
     }
 

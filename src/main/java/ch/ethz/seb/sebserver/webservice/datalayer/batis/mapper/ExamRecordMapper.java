@@ -32,20 +32,20 @@ import org.mybatis.dynamic.sql.util.SqlProviderAdapter;
 
 @Mapper
 public interface ExamRecordMapper {
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.091+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.134+01:00", comments="Source Table: exam")
     @SelectProvider(type=SqlProviderAdapter.class, method="select")
     long count(SelectStatementProvider selectStatement);
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.091+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.135+01:00", comments="Source Table: exam")
     @DeleteProvider(type=SqlProviderAdapter.class, method="delete")
     int delete(DeleteStatementProvider deleteStatement);
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.091+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.135+01:00", comments="Source Table: exam")
     @InsertProvider(type=SqlProviderAdapter.class, method="insert")
     @SelectKey(statement="SELECT LAST_INSERT_ID()", keyProperty="record.id", before=false, resultType=Long.class)
     int insert(InsertStatementProvider<ExamRecord> insertStatement);
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.092+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.135+01:00", comments="Source Table: exam")
     @SelectProvider(type=SqlProviderAdapter.class, method="select")
     @ConstructorArgs({
         @Arg(column="id", javaType=Long.class, jdbcType=JdbcType.BIGINT, id=true),
@@ -61,11 +61,13 @@ public interface ExamRecordMapper {
         @Arg(column="lms_seb_restriction", javaType=Integer.class, jdbcType=JdbcType.INTEGER),
         @Arg(column="updating", javaType=Integer.class, jdbcType=JdbcType.INTEGER),
         @Arg(column="lastupdate", javaType=String.class, jdbcType=JdbcType.VARCHAR),
-        @Arg(column="active", javaType=Integer.class, jdbcType=JdbcType.INTEGER)
+        @Arg(column="active", javaType=Integer.class, jdbcType=JdbcType.INTEGER),
+        @Arg(column="exam_template_id", javaType=Long.class, jdbcType=JdbcType.BIGINT),
+        @Arg(column="last_modified", javaType=Long.class, jdbcType=JdbcType.BIGINT)
     })
     ExamRecord selectOne(SelectStatementProvider selectStatement);
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.092+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.135+01:00", comments="Source Table: exam")
     @SelectProvider(type=SqlProviderAdapter.class, method="select")
     @ConstructorArgs({
         @Arg(column="id", javaType=Long.class, jdbcType=JdbcType.BIGINT, id=true),
@@ -81,26 +83,28 @@ public interface ExamRecordMapper {
         @Arg(column="lms_seb_restriction", javaType=Integer.class, jdbcType=JdbcType.INTEGER),
         @Arg(column="updating", javaType=Integer.class, jdbcType=JdbcType.INTEGER),
         @Arg(column="lastupdate", javaType=String.class, jdbcType=JdbcType.VARCHAR),
-        @Arg(column="active", javaType=Integer.class, jdbcType=JdbcType.INTEGER)
+        @Arg(column="active", javaType=Integer.class, jdbcType=JdbcType.INTEGER),
+        @Arg(column="exam_template_id", javaType=Long.class, jdbcType=JdbcType.BIGINT),
+        @Arg(column="last_modified", javaType=Long.class, jdbcType=JdbcType.BIGINT)
     })
     List<ExamRecord> selectMany(SelectStatementProvider selectStatement);
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.092+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.135+01:00", comments="Source Table: exam")
     @UpdateProvider(type=SqlProviderAdapter.class, method="update")
     int update(UpdateStatementProvider updateStatement);
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.092+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.135+01:00", comments="Source Table: exam")
     default QueryExpressionDSL<MyBatis3SelectModelAdapter<Long>> countByExample() {
         return SelectDSL.selectWithMapper(this::count, SqlBuilder.count())
                 .from(examRecord);
     }
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.092+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.135+01:00", comments="Source Table: exam")
     default DeleteDSL<MyBatis3DeleteModelAdapter<Integer>> deleteByExample() {
         return DeleteDSL.deleteFromWithMapper(this::delete, examRecord);
     }
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.092+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.135+01:00", comments="Source Table: exam")
     default int deleteByPrimaryKey(Long id_) {
         return DeleteDSL.deleteFromWithMapper(this::delete, examRecord)
                 .where(id, isEqualTo(id_))
@@ -108,7 +112,7 @@ public interface ExamRecordMapper {
                 .execute();
     }
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.092+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.135+01:00", comments="Source Table: exam")
     default int insert(ExamRecord record) {
         return insert(SqlBuilder.insert(record)
                 .into(examRecord)
@@ -125,11 +129,13 @@ public interface ExamRecordMapper {
                 .map(updating).toProperty("updating")
                 .map(lastupdate).toProperty("lastupdate")
                 .map(active).toProperty("active")
+                .map(examTemplateId).toProperty("examTemplateId")
+                .map(lastModified).toProperty("lastModified")
                 .build()
                 .render(RenderingStrategy.MYBATIS3));
     }
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.092+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.135+01:00", comments="Source Table: exam")
     default int insertSelective(ExamRecord record) {
         return insert(SqlBuilder.insert(record)
                 .into(examRecord)
@@ -146,32 +152,34 @@ public interface ExamRecordMapper {
                 .map(updating).toPropertyWhenPresent("updating", record::getUpdating)
                 .map(lastupdate).toPropertyWhenPresent("lastupdate", record::getLastupdate)
                 .map(active).toPropertyWhenPresent("active", record::getActive)
+                .map(examTemplateId).toPropertyWhenPresent("examTemplateId", record::getExamTemplateId)
+                .map(lastModified).toPropertyWhenPresent("lastModified", record::getLastModified)
                 .build()
                 .render(RenderingStrategy.MYBATIS3));
     }
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.092+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.135+01:00", comments="Source Table: exam")
     default QueryExpressionDSL<MyBatis3SelectModelAdapter<List<ExamRecord>>> selectByExample() {
-        return SelectDSL.selectWithMapper(this::selectMany, id, institutionId, lmsSetupId, externalId, owner, supporter, type, quitPassword, browserKeys, status, lmsSebRestriction, updating, lastupdate, active)
+        return SelectDSL.selectWithMapper(this::selectMany, id, institutionId, lmsSetupId, externalId, owner, supporter, type, quitPassword, browserKeys, status, lmsSebRestriction, updating, lastupdate, active, examTemplateId, lastModified)
                 .from(examRecord);
     }
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.092+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.135+01:00", comments="Source Table: exam")
     default QueryExpressionDSL<MyBatis3SelectModelAdapter<List<ExamRecord>>> selectDistinctByExample() {
-        return SelectDSL.selectDistinctWithMapper(this::selectMany, id, institutionId, lmsSetupId, externalId, owner, supporter, type, quitPassword, browserKeys, status, lmsSebRestriction, updating, lastupdate, active)
+        return SelectDSL.selectDistinctWithMapper(this::selectMany, id, institutionId, lmsSetupId, externalId, owner, supporter, type, quitPassword, browserKeys, status, lmsSebRestriction, updating, lastupdate, active, examTemplateId, lastModified)
                 .from(examRecord);
     }
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.093+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.135+01:00", comments="Source Table: exam")
     default ExamRecord selectByPrimaryKey(Long id_) {
-        return SelectDSL.selectWithMapper(this::selectOne, id, institutionId, lmsSetupId, externalId, owner, supporter, type, quitPassword, browserKeys, status, lmsSebRestriction, updating, lastupdate, active)
+        return SelectDSL.selectWithMapper(this::selectOne, id, institutionId, lmsSetupId, externalId, owner, supporter, type, quitPassword, browserKeys, status, lmsSebRestriction, updating, lastupdate, active, examTemplateId, lastModified)
                 .from(examRecord)
                 .where(id, isEqualTo(id_))
                 .build()
                 .execute();
     }
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.093+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.135+01:00", comments="Source Table: exam")
     default UpdateDSL<MyBatis3UpdateModelAdapter<Integer>> updateByExample(ExamRecord record) {
         return UpdateDSL.updateWithMapper(this::update, examRecord)
                 .set(institutionId).equalTo(record::getInstitutionId)
@@ -186,10 +194,12 @@ public interface ExamRecordMapper {
                 .set(lmsSebRestriction).equalTo(record::getLmsSebRestriction)
                 .set(updating).equalTo(record::getUpdating)
                 .set(lastupdate).equalTo(record::getLastupdate)
-                .set(active).equalTo(record::getActive);
+                .set(active).equalTo(record::getActive)
+                .set(examTemplateId).equalTo(record::getExamTemplateId)
+                .set(lastModified).equalTo(record::getLastModified);
     }
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.093+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.135+01:00", comments="Source Table: exam")
     default UpdateDSL<MyBatis3UpdateModelAdapter<Integer>> updateByExampleSelective(ExamRecord record) {
         return UpdateDSL.updateWithMapper(this::update, examRecord)
                 .set(institutionId).equalToWhenPresent(record::getInstitutionId)
@@ -204,10 +214,12 @@ public interface ExamRecordMapper {
                 .set(lmsSebRestriction).equalToWhenPresent(record::getLmsSebRestriction)
                 .set(updating).equalToWhenPresent(record::getUpdating)
                 .set(lastupdate).equalToWhenPresent(record::getLastupdate)
-                .set(active).equalToWhenPresent(record::getActive);
+                .set(active).equalToWhenPresent(record::getActive)
+                .set(examTemplateId).equalToWhenPresent(record::getExamTemplateId)
+                .set(lastModified).equalToWhenPresent(record::getLastModified);
     }
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.093+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.136+01:00", comments="Source Table: exam")
     default int updateByPrimaryKey(ExamRecord record) {
         return UpdateDSL.updateWithMapper(this::update, examRecord)
                 .set(institutionId).equalTo(record::getInstitutionId)
@@ -223,12 +235,14 @@ public interface ExamRecordMapper {
                 .set(updating).equalTo(record::getUpdating)
                 .set(lastupdate).equalTo(record::getLastupdate)
                 .set(active).equalTo(record::getActive)
+                .set(examTemplateId).equalTo(record::getExamTemplateId)
+                .set(lastModified).equalTo(record::getLastModified)
                 .where(id, isEqualTo(record::getId))
                 .build()
                 .execute();
     }
 
-    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2021-05-17T13:37:54.093+02:00", comments="Source Table: exam")
+    @Generated(value="org.mybatis.generator.api.MyBatisGenerator", date="2022-01-18T17:36:21.136+01:00", comments="Source Table: exam")
     default int updateByPrimaryKeySelective(ExamRecord record) {
         return UpdateDSL.updateWithMapper(this::update, examRecord)
                 .set(institutionId).equalToWhenPresent(record::getInstitutionId)
@@ -244,6 +258,8 @@ public interface ExamRecordMapper {
                 .set(updating).equalToWhenPresent(record::getUpdating)
                 .set(lastupdate).equalToWhenPresent(record::getLastupdate)
                 .set(active).equalToWhenPresent(record::getActive)
+                .set(examTemplateId).equalToWhenPresent(record::getExamTemplateId)
+                .set(lastModified).equalToWhenPresent(record::getLastModified)
                 .where(id, isEqualTo(record::getId))
                 .build()
                 .execute();

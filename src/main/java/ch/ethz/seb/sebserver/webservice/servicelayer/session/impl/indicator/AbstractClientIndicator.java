@@ -8,26 +8,40 @@
 
 package ch.ethz.seb.sebserver.webservice.servicelayer.session.impl.indicator;
 
-import org.joda.time.DateTimeUtils;
+import java.util.Comparator;
 
-import ch.ethz.seb.sebserver.gbl.Constants;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import ch.ethz.seb.sebserver.gbl.model.exam.Indicator;
+import ch.ethz.seb.sebserver.gbl.util.Utils;
 import ch.ethz.seb.sebserver.webservice.servicelayer.session.ClientIndicator;
 
 public abstract class AbstractClientIndicator implements ClientIndicator {
 
-    private static final long PERSISTENT_UPDATE_INTERVAL = Constants.SECOND_IN_MILLIS;
+    private static final Logger log = LoggerFactory.getLogger(AbstractClientIndicator.class);
 
-    protected Long indicatorId;
-    protected Long examId;
+    protected final DistributedIndicatorValueService distributedPingCache;
+
+    protected Long indicatorId = -1L;
+    protected Long examId = -1L;
     protected Long connectionId;
     protected boolean cachingEnabled;
     protected boolean active = true;
-    protected long persistentUpdateInterval = PERSISTENT_UPDATE_INTERVAL;
-    protected long lastPersistentUpdate = 0;
 
-    protected boolean valueInitializes = false;
+    protected Long ditributedIndicatorValueRecordId = null;
+
+    protected boolean initialized = false;
     protected double currentValue = Double.NaN;
+
+    protected double incidentThreshold = 0.0;
+
+    protected long lastUpdate = 0;
+
+    public AbstractClientIndicator(final DistributedIndicatorValueService distributedPingCache) {
+        super();
+        this.distributedPingCache = distributedPingCache;
+    }
 
     @Override
     public void init(
@@ -36,15 +50,57 @@ public abstract class AbstractClientIndicator implements ClientIndicator {
             final boolean active,
             final boolean cachingEnabled) {
 
-        this.indicatorId = (indicatorDefinition != null && indicatorDefinition.id != null)
-                ? indicatorDefinition.id
-                : -1;
-        this.examId = (indicatorDefinition != null && indicatorDefinition.examId != null)
-                ? indicatorDefinition.examId
-                : -1;
+        if (indicatorDefinition != null) {
+            this.incidentThreshold = (!indicatorDefinition.type.inverse)
+                    ? indicatorDefinition.thresholds.stream()
+                            .map(t -> t.value)
+                            .max(Comparator.naturalOrder())
+                            .orElse(0.0)
+                    : indicatorDefinition.thresholds.stream()
+                            .map(t -> t.value)
+                            .min(Comparator.naturalOrder())
+                            .orElse(0.0);
+            this.indicatorId = indicatorDefinition.id;
+            this.examId = indicatorDefinition.examId;
+        }
+
         this.connectionId = connectionId;
         this.active = active;
         this.cachingEnabled = cachingEnabled;
+
+        if (!this.cachingEnabled && this.active) {
+            try {
+                this.ditributedIndicatorValueRecordId = this.distributedPingCache.initIndicatorForConnection(
+                        connectionId,
+                        getType(),
+                        initValue());
+            } catch (final Exception e) {
+                tryRecoverIndicatorRecord();
+            }
+        }
+
+        this.currentValue = computeValueAt(Utils.getMillisecondsNow());
+        this.initialized = true;
+    }
+
+    protected long initValue() {
+        return 0;
+    }
+
+    protected void tryRecoverIndicatorRecord() {
+
+        if (log.isWarnEnabled()) {
+            log.warn("*** Missing indicator value record for connection: {}. Try to recover...", this.connectionId);
+        }
+
+        try {
+            this.ditributedIndicatorValueRecordId = this.distributedPingCache.initIndicatorForConnection(
+                    this.connectionId,
+                    getType(),
+                    initValue());
+        } catch (final Exception e) {
+            log.error("Failed to recover indicator value record for connection: {}", this.connectionId, e);
+        }
     }
 
     @Override
@@ -63,24 +119,25 @@ public abstract class AbstractClientIndicator implements ClientIndicator {
     }
 
     public void reset() {
-        this.currentValue = Double.NaN;
-        this.valueInitializes = false;
+        this.currentValue = computeValueAt(Utils.getMillisecondsNow());
     }
 
     @Override
     public double getValue() {
-        final long now = DateTimeUtils.currentTimeMillis();
-        if (!this.valueInitializes) {
-            this.currentValue = computeValueAt(now);
-            this.lastPersistentUpdate = now;
-            this.valueInitializes = true;
-        }
 
-        if (!this.cachingEnabled && this.active) {
-            if (now - this.lastPersistentUpdate > this.persistentUpdateInterval) {
-                this.currentValue = computeValueAt(now);
-                this.lastPersistentUpdate = now;
+        if (this.initialized && !this.cachingEnabled && this.active
+                && this.lastUpdate != this.distributedPingCache.lastUpdate()) {
+
+            if (this.ditributedIndicatorValueRecordId == null) {
+                this.tryRecoverIndicatorRecord();
             }
+
+            final Long indicatorValue = this.distributedPingCache
+                    .getIndicatorValue(this.ditributedIndicatorValueRecordId);
+            if (indicatorValue != null) {
+                this.currentValue = indicatorValue.doubleValue();
+            }
+            this.lastUpdate = this.distributedPingCache.lastUpdate();
         }
 
         return this.currentValue;

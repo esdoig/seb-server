@@ -11,8 +11,8 @@ package ch.ethz.seb.sebserver.gbl.model.exam;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Map;
 
-import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 
 import org.apache.commons.lang3.StringUtils;
@@ -50,11 +50,16 @@ public final class Exam implements GrantEntity {
             Boolean.FALSE,
             null,
             Boolean.FALSE,
+            null,
+            null,
+            null,
             null);
 
     public static final String FILTER_ATTR_TYPE = "type";
     public static final String FILTER_ATTR_STATUS = "status";
     public static final String FILTER_CACHED_QUIZZES = "cached-quizzes";
+
+    public static final String ATTR_ADDITIONAL_ATTRIBUTES = "additionalAttributes";
 
     public enum ExamStatus {
         UP_COMING,
@@ -109,7 +114,6 @@ public final class Exam implements GrantEntity {
     public final String owner;
 
     @JsonProperty(EXAM.ATTR_SUPPORTER)
-    @NotEmpty(message = "exam:supporter:notNull")
     public final Collection<String> supporter;
 
     @JsonProperty(EXAM.ATTR_STATUS)
@@ -126,6 +130,15 @@ public final class Exam implements GrantEntity {
 
     @JsonProperty(EXAM.ATTR_LASTUPDATE)
     public final String lastUpdate;
+
+    @JsonProperty(EXAM.ATTR_EXAM_TEMPLATE_ID)
+    public final Long examTemplateId;
+
+    @JsonProperty(EXAM.ATTR_LAST_MODIFIED)
+    public final Long lastModified;
+
+    @JsonProperty(ATTR_ADDITIONAL_ATTRIBUTES)
+    private final Map<String, String> additionalAttributes;
 
     @JsonCreator
     public Exam(
@@ -145,7 +158,10 @@ public final class Exam implements GrantEntity {
             @JsonProperty(EXAM.ATTR_LMS_SEB_RESTRICTION) final Boolean sebRestriction,
             @JsonProperty(EXAM.ATTR_BROWSER_KEYS) final String browserExamKeys,
             @JsonProperty(EXAM.ATTR_ACTIVE) final Boolean active,
-            @JsonProperty(EXAM.ATTR_LASTUPDATE) final String lastUpdate) {
+            @JsonProperty(EXAM.ATTR_LASTUPDATE) final String lastUpdate,
+            @JsonProperty(EXAM.ATTR_EXAM_TEMPLATE_ID) final Long examTemplateId,
+            @JsonProperty(EXAM.ATTR_LAST_MODIFIED) final Long lastModified,
+            @JsonProperty(ATTR_ADDITIONAL_ATTRIBUTES) final Map<String, String> additionalAttributes) {
 
         this.id = id;
         this.institutionId = institutionId;
@@ -163,10 +179,14 @@ public final class Exam implements GrantEntity {
         this.browserExamKeys = browserExamKeys;
         this.active = (active != null) ? active : Boolean.TRUE;
         this.lastUpdate = lastUpdate;
+        this.examTemplateId = examTemplateId;
+        this.lastModified = lastModified;
 
         this.supporter = (supporter != null)
                 ? Collections.unmodifiableCollection(supporter)
                 : Collections.emptyList();
+
+        this.additionalAttributes = additionalAttributes;
     }
 
     public Exam(final String modelId, final QuizData quizData, final POSTMapper mapper) {
@@ -191,6 +211,9 @@ public final class Exam implements GrantEntity {
         this.active = mapper.getBoolean(EXAM.ATTR_ACTIVE);
         this.supporter = mapper.getStringSet(EXAM.ATTR_SUPPORTER);
         this.lastUpdate = null;
+        this.examTemplateId = mapper.getLong(EXAM.ATTR_EXAM_TEMPLATE_ID);
+        this.lastModified = null;
+        this.additionalAttributes = null;
     }
 
     public Exam(final QuizData quizData) {
@@ -215,6 +238,9 @@ public final class Exam implements GrantEntity {
         this.active = null;
         this.supporter = null;
         this.lastUpdate = null;
+        this.examTemplateId = null;
+        this.lastModified = null;
+        this.additionalAttributes = null;
     }
 
     @Override
@@ -310,6 +336,26 @@ public final class Exam implements GrantEntity {
 
     public Boolean getActive() {
         return this.active;
+    }
+
+    public Long getExamTemplateId() {
+        return this.examTemplateId;
+    }
+
+    public Long getLastModified() {
+        return this.lastModified;
+    }
+
+    public boolean additionalAttributesIncluded() {
+        return this.additionalAttributes != null;
+    }
+
+    public String getAdditionalAttribute(final String attrName) {
+        if (this.additionalAttributes == null || !this.additionalAttributes.containsKey(attrName)) {
+            return null;
+        }
+
+        return this.additionalAttributes.get(attrName);
     }
 
     @Override

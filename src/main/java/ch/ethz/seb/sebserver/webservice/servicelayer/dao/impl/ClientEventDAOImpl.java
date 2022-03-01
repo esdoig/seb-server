@@ -13,12 +13,12 @@ import static org.mybatis.dynamic.sql.SqlBuilder.*;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-import org.joda.time.DateTimeUtils;
 import org.mybatis.dynamic.sql.SqlBuilder;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
@@ -31,6 +31,7 @@ import ch.ethz.seb.sebserver.gbl.model.session.ClientConnection.ConnectionStatus
 import ch.ethz.seb.sebserver.gbl.model.session.ClientEvent;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientEvent.EventType;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientNotification;
+import ch.ethz.seb.sebserver.gbl.model.session.ClientNotification.NotificationType;
 import ch.ethz.seb.sebserver.gbl.model.session.ExtendedClientEvent;
 import ch.ethz.seb.sebserver.gbl.profile.WebServiceProfile;
 import ch.ethz.seb.sebserver.gbl.util.Result;
@@ -40,7 +41,10 @@ import ch.ethz.seb.sebserver.webservice.datalayer.batis.ClientEventExtensionMapp
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.ClientConnectionRecordDynamicSqlSupport;
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.ClientEventRecordDynamicSqlSupport;
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.ClientEventRecordMapper;
+import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.ClientNotificationRecordDynamicSqlSupport;
+import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.ClientNotificationRecordMapper;
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.model.ClientEventRecord;
+import ch.ethz.seb.sebserver.webservice.datalayer.batis.model.ClientNotificationRecord;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.ClientEventDAO;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.DAOLoggingSupport;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.FilterMap;
@@ -54,13 +58,16 @@ public class ClientEventDAOImpl implements ClientEventDAO {
 
     private final ClientEventRecordMapper clientEventRecordMapper;
     private final ClientEventExtensionMapper clientEventExtensionMapper;
+    private final ClientNotificationRecordMapper clientNotificationRecordMapper;
 
     protected ClientEventDAOImpl(
             final ClientEventRecordMapper clientEventRecordMapper,
-            final ClientEventExtensionMapper clientEventExtensionMapper) {
+            final ClientEventExtensionMapper clientEventExtensionMapper,
+            final ClientNotificationRecordMapper clientNotificationRecordMapper) {
 
         this.clientEventRecordMapper = clientEventRecordMapper;
         this.clientEventExtensionMapper = clientEventExtensionMapper;
+        this.clientNotificationRecordMapper = clientNotificationRecordMapper;
     }
 
     @Override
@@ -104,7 +111,7 @@ public class ClientEventDAOImpl implements ClientEventDAO {
                         isEqualToWhenPresent(filterMap.getClientEventTypeId()))
                 .and(
                         ClientEventRecordDynamicSqlSupport.type,
-                        SqlBuilder.isNotEqualTo(EventType.LAST_PING.id))
+                        SqlBuilder.isNotEqualTo(EventType.REMOVED_EVENT_TYPE_LAST_PING))
                 .and(
                         ClientEventRecordDynamicSqlSupport.clientTime,
                         SqlBuilder.isGreaterThanOrEqualToWhenPresent(filterMap.getClientEventClientTimeFrom()))
@@ -130,6 +137,7 @@ public class ClientEventDAOImpl implements ClientEventDAO {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Result<Collection<ExtendedClientEvent>> allMatchingExtended(
             final FilterMap filterMap,
             final Predicate<ExtendedClientEvent> predicate) {
@@ -152,7 +160,7 @@ public class ClientEventDAOImpl implements ClientEventDAO {
                         isEqualToWhenPresent(filterMap.getClientEventTypeId()))
                 .and(
                         ClientEventRecordDynamicSqlSupport.type,
-                        SqlBuilder.isNotEqualTo(EventType.LAST_PING.id))
+                        SqlBuilder.isNotEqualTo(EventType.REMOVED_EVENT_TYPE_LAST_PING))
                 .and(
                         ClientEventRecordDynamicSqlSupport.clientTime,
                         SqlBuilder.isGreaterThanOrEqualToWhenPresent(filterMap.getClientEventClientTimeFrom()))
@@ -180,22 +188,49 @@ public class ClientEventDAOImpl implements ClientEventDAO {
     @Override
     @Transactional(readOnly = true)
     public Result<Collection<ClientEvent>> allOf(final Set<Long> pks) {
-        return Result.tryCatch(() -> this.clientEventRecordMapper.selectByExample()
-                .where(ClientEventRecordDynamicSqlSupport.id, isIn(new ArrayList<>(pks)))
-                .build()
-                .execute()
-                .stream()
-                .map(ClientEventDAOImpl::toDomainModel)
-                .flatMap(DAOLoggingSupport::logAndSkipOnError)
-                .collect(Collectors.toList()));
+        return Result.tryCatch(() -> {
+
+            if (pks == null || pks.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            return this.clientEventRecordMapper.selectByExample()
+                    .where(ClientEventRecordDynamicSqlSupport.id, isIn(new ArrayList<>(pks)))
+                    .build()
+                    .execute()
+                    .stream()
+                    .map(ClientEventDAOImpl::toDomainModel)
+                    .flatMap(DAOLoggingSupport::logAndSkipOnError)
+                    .collect(Collectors.toList());
+        });
     }
 
     @Override
     @Transactional(readOnly = true)
     public Result<ClientNotification> getPendingNotification(final Long notificationId) {
-        return Result.tryCatch(() -> this.clientEventRecordMapper
+        return Result.tryCatch(() -> this.clientNotificationRecordMapper
                 .selectByPrimaryKey(notificationId))
-                .flatMap(ClientEventDAOImpl::toClientNotificationModel);
+                .flatMap(ClientEventDAOImpl::toDomainModel);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Result<Set<EntityKey>> getNotificationIdsForExam(final Long examId) {
+        return Result.tryCatch(() -> this.clientNotificationRecordMapper
+                .selectByExample()
+                .leftJoin(ClientConnectionRecordDynamicSqlSupport.clientConnectionRecord)
+                .on(
+                        ClientConnectionRecordDynamicSqlSupport.id,
+                        equalTo(ClientNotificationRecordDynamicSqlSupport.clientConnectionId))
+                .where(
+                        ClientConnectionRecordDynamicSqlSupport.examId,
+                        isEqualToWhenPresent(examId))
+                .build()
+                .execute()
+                .stream()
+                .map(ClientNotificationRecord::getClientConnectionId)
+                .map(id -> new EntityKey(id, EntityType.CLIENT_NOTIFICATION))
+                .collect(Collectors.toSet()));
     }
 
     @Override
@@ -206,10 +241,11 @@ public class ClientEventDAOImpl implements ClientEventDAO {
 
         return Result.tryCatch(() -> {
 
-            final List<ClientEventRecord> records = this.clientEventRecordMapper
+            final List<ClientNotificationRecord> records = this.clientNotificationRecordMapper
                     .selectByExample()
-                    .where(ClientEventRecordDynamicSqlSupport.clientConnectionId, isEqualTo(clientConnectionId))
-                    .and(ClientEventRecordDynamicSqlSupport.type, isEqualTo(EventType.NOTIFICATION.id))
+                    .where(ClientNotificationRecordDynamicSqlSupport.clientConnectionId, isEqualTo(clientConnectionId))
+                    .and(ClientNotificationRecordDynamicSqlSupport.eventType, isEqualTo(EventType.NOTIFICATION.id))
+                    .and(ClientNotificationRecordDynamicSqlSupport.value, isEqualTo(notificationValueId))
                     .build()
                     .execute();
 
@@ -219,33 +255,27 @@ public class ClientEventDAOImpl implements ClientEventDAO {
                         records);
             }
 
-            return records.stream()
-                    .filter(rec -> {
-                        final BigDecimal numericValue = rec.getNumericValue();
-                        if (numericValue == null) {
-                            return false;
-                        }
-                        return numericValue.longValue() == notificationValueId;
-                    })
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Failed to find pending notification event for confirm:" + notificationValueId));
+            if (records.isEmpty() || records.size() > 1) {
+                throw new IllegalStateException(
+                        "Failed to find pending notification event for confirm:" + notificationValueId);
+            }
 
+            return records.get(0);
         })
-                .flatMap(ClientEventDAOImpl::toClientNotificationModel);
+                .flatMap(ClientEventDAOImpl::toDomainModel);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Result<List<ClientNotification>> getPendingNotifications(final Long clientConnectionId) {
-        return Result.tryCatch(() -> this.clientEventRecordMapper
+        return Result.tryCatch(() -> this.clientNotificationRecordMapper
                 .selectByExample()
-                .where(ClientEventRecordDynamicSqlSupport.clientConnectionId, isEqualTo(clientConnectionId))
-                .and(ClientEventRecordDynamicSqlSupport.type, isEqualTo(EventType.NOTIFICATION.id))
+                .where(ClientNotificationRecordDynamicSqlSupport.clientConnectionId, isEqualTo(clientConnectionId))
+                .and(ClientNotificationRecordDynamicSqlSupport.eventType, isEqualTo(EventType.NOTIFICATION.id))
                 .build()
                 .execute()
                 .stream()
-                .map(ClientEventDAOImpl::toClientNotificationModel)
+                .map(ClientEventDAOImpl::toDomainModel)
                 .flatMap(DAOLoggingSupport::logAndSkipOnError)
                 .collect(Collectors.toList()));
     }
@@ -253,25 +283,25 @@ public class ClientEventDAOImpl implements ClientEventDAO {
     @Override
     @Transactional(readOnly = true)
     public Result<Set<Long>> getClientConnectionIdsWithPendingNotification(final Long examId) {
-        return Result.tryCatch(() -> this.clientEventRecordMapper
+        return Result.tryCatch(() -> this.clientNotificationRecordMapper
                 .selectByExample()
                 .leftJoin(ClientConnectionRecordDynamicSqlSupport.clientConnectionRecord)
                 .on(
                         ClientConnectionRecordDynamicSqlSupport.id,
-                        equalTo(ClientEventRecordDynamicSqlSupport.clientConnectionId))
+                        equalTo(ClientNotificationRecordDynamicSqlSupport.clientConnectionId))
                 .where(
                         ClientConnectionRecordDynamicSqlSupport.examId,
                         isEqualToWhenPresent(examId))
                 .and(
                         ClientConnectionRecordDynamicSqlSupport.status,
-                        isEqualTo(ConnectionStatus.ACTIVE.name()))
+                        isIn(ConnectionStatus.ACTIVE.name(), ConnectionStatus.CONNECTION_REQUESTED.name()))
                 .and(
-                        ClientEventRecordDynamicSqlSupport.type,
+                        ClientNotificationRecordDynamicSqlSupport.eventType,
                         isEqualTo(EventType.NOTIFICATION.id))
                 .build()
                 .execute()
                 .stream()
-                .map(ClientEventRecord::getClientConnectionId)
+                .map(ClientNotificationRecord::getClientConnectionId)
                 .collect(Collectors.toSet()));
     }
 
@@ -280,23 +310,23 @@ public class ClientEventDAOImpl implements ClientEventDAO {
     public Result<ClientNotification> confirmPendingNotification(final Long notificationId) {
 
         return Result.tryCatch(() -> {
-            final Long pk = this.clientEventRecordMapper
+            final Long pk = this.clientNotificationRecordMapper
                     .selectIdsByExample()
-                    .where(ClientEventRecordDynamicSqlSupport.id, isEqualTo(notificationId))
-                    .and(ClientEventRecordDynamicSqlSupport.type, isEqualTo(EventType.NOTIFICATION.id))
+                    .where(ClientNotificationRecordDynamicSqlSupport.id, isEqualTo(notificationId))
+                    .and(ClientNotificationRecordDynamicSqlSupport.eventType, isEqualTo(EventType.NOTIFICATION.id))
                     .build()
                     .execute()
                     .stream().collect(Utils.toSingleton());
 
-            this.clientEventRecordMapper.updateByPrimaryKeySelective(new ClientEventRecord(
+            this.clientNotificationRecordMapper.updateByPrimaryKeySelective(new ClientNotificationRecord(
                     pk,
                     null,
                     EventType.NOTIFICATION_CONFIRMED.id,
-                    null, null, null, null));
+                    null, null, null));
 
-            return this.clientEventRecordMapper.selectByPrimaryKey(pk);
+            return this.clientNotificationRecordMapper.selectByPrimaryKey(pk);
         })
-                .flatMap(ClientEventDAOImpl::toClientNotificationModel)
+                .flatMap(ClientEventDAOImpl::toDomainModel)
                 .onError(TransactionHandler::rollback);
     }
 
@@ -325,6 +355,29 @@ public class ClientEventDAOImpl implements ClientEventDAO {
 
     @Override
     @Transactional
+    public Result<ClientNotification> createNewNotification(final ClientNotification notification) {
+        return Result.tryCatch(() -> {
+
+            final EventType eventType = notification.getEventType();
+            final NotificationType notificationType = notification.getNotificationType();
+
+            final ClientNotificationRecord newRecord = new ClientNotificationRecord(
+                    null,
+                    notification.connectionId,
+                    eventType != null ? eventType.id : EventType.UNKNOWN.id,
+                    notificationType != null ? notificationType.id : NotificationType.UNKNOWN.id,
+                    notification.numValue != null ? notification.numValue.longValue() : null,
+                    notification.text);
+
+            this.clientNotificationRecordMapper.insertSelective(newRecord);
+            return newRecord;
+        })
+                .flatMap(ClientEventDAOImpl::toDomainModel)
+                .onError(TransactionHandler::rollback);
+    }
+
+    @Override
+    @Transactional
     public Result<ClientEvent> save(final ClientEvent data) {
         throw new UnsupportedOperationException("Update is not supported for client events");
     }
@@ -333,6 +386,10 @@ public class ClientEventDAOImpl implements ClientEventDAO {
     @Transactional
     public Result<Collection<EntityKey>> delete(final Set<EntityKey> all) {
         return Result.tryCatch(() -> {
+
+            if (all == null || all.isEmpty()) {
+                return Collections.emptyList();
+            }
 
             final List<Long> pks = all
                     .stream()
@@ -355,60 +412,34 @@ public class ClientEventDAOImpl implements ClientEventDAO {
 
     @Override
     @Transactional
-    public Result<ClientEventRecord> initPingEvent(final Long connectionId) {
+    public Result<Collection<EntityKey>> deleteClientNotification(final Set<EntityKey> keys) {
         return Result.tryCatch(() -> {
-            final List<ClientEventRecord> lastPingRec = this.clientEventRecordMapper
-                    .selectByExample()
-                    .where(ClientEventRecordDynamicSqlSupport.clientConnectionId, isEqualTo(connectionId))
-                    .and(ClientEventRecordDynamicSqlSupport.type, isEqualTo(EventType.LAST_PING.id))
+
+            if (keys == null || keys.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            final List<Long> pks = keys
+                    .stream()
+                    .map(EntityKey::getModelId)
+                    .map(Long::parseLong)
+                    .collect(Collectors.toList());
+
+            if (log.isDebugEnabled()) {
+                log.debug("Going to delete all client notifications: {}", pks);
+            }
+
+            this.clientNotificationRecordMapper
+                    .deleteByExample()
+                    .where(ClientNotificationRecordDynamicSqlSupport.id, isIn(pks))
                     .build()
                     .execute();
 
-            if (lastPingRec != null && !lastPingRec.isEmpty()) {
-                return lastPingRec.get(0);
-            }
-
-            final long millisecondsNow = DateTimeUtils.currentTimeMillis();
-            final ClientEventRecord clientEventRecord = new ClientEventRecord();
-            clientEventRecord.setClientConnectionId(connectionId);
-            clientEventRecord.setType(EventType.LAST_PING.id);
-            clientEventRecord.setClientTime(millisecondsNow);
-            clientEventRecord.setServerTime(millisecondsNow);
-            this.clientEventRecordMapper.insert(clientEventRecord);
-
-            try {
-
-                return this.clientEventRecordMapper
-                        .selectByExample()
-                        .where(ClientEventRecordDynamicSqlSupport.clientConnectionId, isEqualTo(connectionId))
-                        .and(ClientEventRecordDynamicSqlSupport.type, isEqualTo(EventType.LAST_PING.id))
-                        .build()
-                        .execute()
-                        .get(0);
-
-            } catch (final Exception e) {
-                return clientEventRecord;
-            }
-
+            return pks
+                    .stream()
+                    .map(pk -> new EntityKey(String.valueOf(pk), EntityType.CLIENT_NOTIFICATION))
+                    .collect(Collectors.toList());
         });
-    }
-
-    @Override
-    @Transactional
-    public void updatePingEvent(final ClientEventRecord pingRecord) {
-        try {
-            this.clientEventRecordMapper.updateByPrimaryKeySelective(pingRecord);
-        } catch (final Exception e) {
-            log.error("Failed to update ping event: {}", e.getMessage());
-        }
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Result<Long> getLastPing(final Long pk) {
-        return Result.tryCatch(() -> this.clientEventRecordMapper
-                .selectByPrimaryKey(pk)
-                .getServerTime());
     }
 
     private Result<ClientEventRecord> recordById(final Long id) {
@@ -425,22 +456,6 @@ public class ClientEventDAOImpl implements ClientEventDAO {
         });
     }
 
-    private static Result<ClientNotification> toClientNotificationModel(final ClientEventRecord record) {
-        return Result.tryCatch(() -> {
-
-            final Integer type = record.getType();
-            final BigDecimal numericValue = record.getNumericValue();
-            return new ClientNotification(
-                    record.getId(),
-                    record.getClientConnectionId(),
-                    (type != null) ? EventType.byId(type) : EventType.UNKNOWN,
-                    record.getClientTime(),
-                    record.getServerTime(),
-                    (numericValue != null) ? numericValue.doubleValue() : null,
-                    record.getText());
-        });
-    }
-
     private static Result<ClientEvent> toDomainModel(final ClientEventRecord record) {
         return Result.tryCatch(() -> {
 
@@ -454,6 +469,26 @@ public class ClientEventDAOImpl implements ClientEventDAO {
                     record.getServerTime(),
                     (numericValue != null) ? numericValue.doubleValue() : null,
                     record.getText());
+        });
+    }
+
+    private static Result<ClientNotification> toDomainModel(final ClientNotificationRecord record) {
+        return Result.tryCatch(() -> {
+
+            final Long value = record.getValue();
+            final NotificationType notificationType = (record.getNotificationType() != null)
+                    ? NotificationType.byId(record.getNotificationType())
+                    : NotificationType.UNKNOWN;
+
+            return new ClientNotification(
+                    record.getId(),
+                    record.getClientConnectionId(),
+                    (record.getEventType() != null) ? EventType.byId(record.getEventType()) : EventType.UNKNOWN,
+                    null,
+                    null,
+                    (value != null) ? value.doubleValue() : null,
+                    record.getText(),
+                    notificationType);
         });
     }
 

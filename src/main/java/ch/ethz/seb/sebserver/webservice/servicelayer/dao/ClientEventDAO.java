@@ -13,11 +13,11 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Predicate;
 
+import ch.ethz.seb.sebserver.gbl.model.EntityKey;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientEvent;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientNotification;
 import ch.ethz.seb.sebserver.gbl.model.session.ExtendedClientEvent;
 import ch.ethz.seb.sebserver.gbl.util.Result;
-import ch.ethz.seb.sebserver.webservice.datalayer.batis.model.ClientEventRecord;
 
 public interface ClientEventDAO extends EntityDAO<ClientEvent, ClientEvent> {
 
@@ -29,6 +29,12 @@ public interface ClientEventDAO extends EntityDAO<ClientEvent, ClientEvent> {
     Result<Collection<ExtendedClientEvent>> allMatchingExtended(
             FilterMap filterMap,
             Predicate<ExtendedClientEvent> predicate);
+
+    /** Used to create/insert a new client notification.
+     *
+     * @param notification The client notification model data
+     * @return Result refer to the resulting client notification or to an error when appened. */
+    Result<ClientNotification> createNewNotification(ClientNotification notification);
 
     /** Get a specified notification by id (PK)
      *
@@ -62,10 +68,12 @@ public interface ClientEventDAO extends EntityDAO<ClientEvent, ClientEvent> {
      * @return Result refer to the confirmed notification or to en error when happened */
     Result<ClientNotification> confirmPendingNotification(Long notificationId);
 
-    Result<ClientEventRecord> initPingEvent(Long connectionId);
+    /** Used to get all client notification identifiers/PKs that are mapped to a specified exam.
+     *
+     * @param examId The identifier/PK of the exam
+     * @return Result refer to a set of client notification identifiers or to an error when happened */
+    Result<Set<EntityKey>> getNotificationIdsForExam(Long examId);
 
-    void updatePingEvent(ClientEventRecord pingRecord);
-
-    Result<Long> getLastPing(Long pk);
+    Result<Collection<EntityKey>> deleteClientNotification(Set<EntityKey> keys);
 
 }

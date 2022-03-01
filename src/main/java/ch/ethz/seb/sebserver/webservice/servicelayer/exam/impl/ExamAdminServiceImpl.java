@@ -9,7 +9,6 @@
 package ch.ethz.seb.sebserver.webservice.servicelayer.exam.impl;
 
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -21,19 +20,13 @@ import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-
 import ch.ethz.seb.sebserver.gbl.Constants;
 import ch.ethz.seb.sebserver.gbl.api.EntityType;
-import ch.ethz.seb.sebserver.gbl.api.JSONMapper;
 import ch.ethz.seb.sebserver.gbl.model.exam.Exam;
-import ch.ethz.seb.sebserver.gbl.model.exam.Indicator;
-import ch.ethz.seb.sebserver.gbl.model.exam.Indicator.IndicatorType;
 import ch.ethz.seb.sebserver.gbl.model.exam.OpenEdxSEBRestriction;
 import ch.ethz.seb.sebserver.gbl.model.exam.ProctoringServiceSettings;
 import ch.ethz.seb.sebserver.gbl.model.exam.ProctoringServiceSettings.ProctoringFeature;
@@ -44,10 +37,10 @@ import ch.ethz.seb.sebserver.gbl.model.institution.LmsSetup.LmsType;
 import ch.ethz.seb.sebserver.gbl.profile.WebServiceProfile;
 import ch.ethz.seb.sebserver.gbl.util.Cryptor;
 import ch.ethz.seb.sebserver.gbl.util.Result;
+import ch.ethz.seb.sebserver.gbl.util.Utils;
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.model.AdditionalAttributeRecord;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.AdditionalAttributesDAO;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.ExamDAO;
-import ch.ethz.seb.sebserver.webservice.servicelayer.dao.IndicatorDAO;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.RemoteProctoringRoomDAO;
 import ch.ethz.seb.sebserver.webservice.servicelayer.exam.ExamAdminService;
 import ch.ethz.seb.sebserver.webservice.servicelayer.lms.LmsAPIService;
@@ -64,80 +57,44 @@ public class ExamAdminServiceImpl implements ExamAdminService {
     private static final Logger log = LoggerFactory.getLogger(ExamAdminServiceImpl.class);
 
     private final ExamDAO examDAO;
-    private final IndicatorDAO indicatorDAO;
     private final AdditionalAttributesDAO additionalAttributesDAO;
     private final LmsAPIService lmsAPIService;
-    private final JSONMapper jsonMapper;
     private final Cryptor cryptor;
     private final ExamProctoringServiceFactory examProctoringServiceFactory;
     private final RemoteProctoringRoomDAO remoteProctoringRoomDAO;
 
-    private final String defaultIndicatorName;
-    private final String defaultIndicatorType;
-    private final String defaultIndicatorColor;
-    private final String defaultIndicatorThresholds;
-
     protected ExamAdminServiceImpl(
             final ExamDAO examDAO,
-            final IndicatorDAO indicatorDAO,
             final AdditionalAttributesDAO additionalAttributesDAO,
             final LmsAPIService lmsAPIService,
-            final JSONMapper jsonMapper,
             final Cryptor cryptor,
             final ExamProctoringServiceFactory examProctoringServiceFactory,
-            final RemoteProctoringRoomDAO remoteProctoringRoomDAO,
-            @Value("${sebserver.webservice.api.exam.indicator.name:Ping}") final String defaultIndicatorName,
-            @Value("${sebserver.webservice.api.exam.indicator.type:LAST_PING}") final String defaultIndicatorType,
-            @Value("${sebserver.webservice.api.exam.indicator.color:b4b4b4}") final String defaultIndicatorColor,
-            @Value("${sebserver.webservice.api.exam.indicator.thresholds:[{\"value\":2000.0,\"color\":\"22b14c\"},{\"value\":5000.0,\"color\":\"ff7e00\"},{\"value\":10000.0,\"color\":\"ed1c24\"}]}") final String defaultIndicatorThresholds) {
+            final RemoteProctoringRoomDAO remoteProctoringRoomDAO) {
 
         this.examDAO = examDAO;
-        this.indicatorDAO = indicatorDAO;
         this.additionalAttributesDAO = additionalAttributesDAO;
         this.lmsAPIService = lmsAPIService;
-        this.jsonMapper = jsonMapper;
         this.cryptor = cryptor;
         this.examProctoringServiceFactory = examProctoringServiceFactory;
         this.remoteProctoringRoomDAO = remoteProctoringRoomDAO;
-
-        this.defaultIndicatorName = defaultIndicatorName;
-        this.defaultIndicatorType = defaultIndicatorType;
-        this.defaultIndicatorColor = defaultIndicatorColor;
-        this.defaultIndicatorThresholds = defaultIndicatorThresholds;
     }
 
     @Override
-    public Result<Exam> addDefaultIndicator(final Exam exam) {
-        return Result.tryCatch(() -> {
-
-            final Collection<Indicator.Threshold> thresholds = this.jsonMapper.readValue(
-                    this.defaultIndicatorThresholds,
-                    new TypeReference<Collection<Indicator.Threshold>>() {
-                    });
-
-            final Indicator indicator = new Indicator(
-                    null,
-                    exam.id,
-                    this.defaultIndicatorName,
-                    IndicatorType.valueOf(this.defaultIndicatorType),
-                    this.defaultIndicatorColor,
-                    null,
-                    null,
-                    thresholds);
-
-            this.indicatorDAO.createNew(indicator)
-                    .getOrThrow();
-
-            return this.examDAO
-                    .byPK(exam.id)
-                    .getOrThrow();
-        });
+    public Result<Exam> examForPK(final Long examId) {
+        return this.examDAO.byPK(examId);
     }
 
     @Override
     public Result<Exam> applyAdditionalSEBRestrictions(final Exam exam) {
         return Result.tryCatch(() -> {
-            final LmsSetup lmsSetup = this.lmsAPIService.getLmsSetup(exam.lmsSetupId)
+
+            if (log.isDebugEnabled()) {
+                log.debug("Apply additional SEB restrictions for exam: {}",
+                        exam.externalId);
+            }
+
+            final LmsSetup lmsSetup = this.lmsAPIService
+                    .getLmsSetup(exam.lmsSetupId)
                     .getOrThrow();
 
             if (lmsSetup.lmsType == LmsType.OPEN_EDX) {
@@ -161,28 +118,8 @@ public class ExamAdminServiceImpl implements ExamAdminService {
     }
 
     @Override
-    public Result<Exam> saveAdditionalAttributes(final Exam exam) {
+    public Result<Exam> saveLMSAttributes(final Exam exam) {
         return saveAdditionalAttributesForMoodleExams(exam);
-    }
-
-    private Result<Exam> saveAdditionalAttributesForMoodleExams(final Exam exam) {
-        return Result.tryCatch(() -> {
-            final LmsAPITemplate lmsTemplate = this.lmsAPIService
-                    .getLmsAPITemplate(exam.lmsSetupId)
-                    .getOrThrow();
-
-            if (lmsTemplate.lmsSetup().lmsType == LmsType.MOODLE) {
-                lmsTemplate.getQuiz(exam.externalId)
-                        .flatMap(quizData -> this.additionalAttributesDAO.saveAdditionalAttribute(
-                                EntityType.EXAM,
-                                exam.id,
-                                QuizData.QUIZ_ATTR_NAME,
-                                quizData.name))
-                        .getOrThrow();
-            }
-
-            return exam;
-        });
     }
 
     @Override
@@ -244,7 +181,7 @@ public class ExamAdminServiceImpl implements ExamAdminService {
                     EntityType.EXAM,
                     examId,
                     ProctoringServiceSettings.ATTR_SERVER_URL,
-                    proctoringServiceSettings.serverURL);
+                    StringUtils.trim(proctoringServiceSettings.serverURL));
 
             this.additionalAttributesDAO.saveAdditionalAttribute(
                     EntityType.EXAM,
@@ -256,13 +193,13 @@ public class ExamAdminServiceImpl implements ExamAdminService {
                     EntityType.EXAM,
                     examId,
                     ProctoringServiceSettings.ATTR_APP_KEY,
-                    proctoringServiceSettings.appKey);
+                    StringUtils.trim(proctoringServiceSettings.appKey));
 
             this.additionalAttributesDAO.saveAdditionalAttribute(
                     EntityType.EXAM,
                     examId,
                     ProctoringServiceSettings.ATTR_APP_SECRET,
-                    this.cryptor.encrypt(proctoringServiceSettings.appSecret)
+                    this.cryptor.encrypt(Utils.trim(proctoringServiceSettings.appSecret))
                             .getOrThrow()
                             .toString());
 
@@ -271,13 +208,13 @@ public class ExamAdminServiceImpl implements ExamAdminService {
                         EntityType.EXAM,
                         examId,
                         ProctoringServiceSettings.ATTR_SDK_KEY,
-                        proctoringServiceSettings.sdkKey);
+                        StringUtils.trim(proctoringServiceSettings.sdkKey));
 
                 this.additionalAttributesDAO.saveAdditionalAttribute(
                         EntityType.EXAM,
                         examId,
                         ProctoringServiceSettings.ATTR_SDK_SECRET,
-                        this.cryptor.encrypt(proctoringServiceSettings.sdkSecret)
+                        this.cryptor.encrypt(Utils.trim(proctoringServiceSettings.sdkSecret))
                                 .getOrThrow()
                                 .toString());
             }
@@ -294,21 +231,28 @@ public class ExamAdminServiceImpl implements ExamAdminService {
                     ProctoringServiceSettings.ATTR_USE_ZOOM_APP_CLIENT_COLLECTING_ROOM,
                     String.valueOf(proctoringServiceSettings.useZoomAppClientForCollectingRoom));
 
+            // Mark the involved exam as updated to notify changes
+            this.examDAO.setModified(examId);
+
             return proctoringServiceSettings;
         });
     }
 
     @Override
     public Result<Boolean> isProctoringEnabled(final Long examId) {
-        final Result<Boolean> result = this.additionalAttributesDAO.getAdditionalAttribute(
+        return this.additionalAttributesDAO.getAdditionalAttribute(
                 EntityType.EXAM,
                 examId,
                 ProctoringServiceSettings.ATTR_ENABLE_PROCTORING)
-                .map(rec -> BooleanUtils.toBoolean(rec.getValue()));
-        if (result.hasError()) {
-            return Result.of(false);
-        }
-        return result;
+                .map(rec -> BooleanUtils.toBoolean(rec.getValue()))
+                .onErrorDo(error -> {
+                    if (log.isDebugEnabled()) {
+                        log.warn("Failed to verify proctoring enabled for exam: {}, {}",
+                                examId,
+                                error.getMessage());
+                    }
+                    return false;
+                });
     }
 
     @Override
@@ -384,6 +328,26 @@ public class ExamAdminServiceImpl implements ExamAdminService {
         } else {
             return EnumSet.allOf(ProctoringFeature.class);
         }
+    }
+
+    private Result<Exam> saveAdditionalAttributesForMoodleExams(final Exam exam) {
+        return Result.tryCatch(() -> {
+            final LmsAPITemplate lmsTemplate = this.lmsAPIService
+                    .getLmsAPITemplate(exam.lmsSetupId)
+                    .getOrThrow();
+
+            if (lmsTemplate.lmsSetup().lmsType == LmsType.MOODLE) {
+                lmsTemplate.getQuiz(exam.externalId)
+                        .flatMap(quizData -> this.additionalAttributesDAO.saveAdditionalAttribute(
+                                EntityType.EXAM,
+                                exam.id,
+                                QuizData.QUIZ_ATTR_NAME,
+                                quizData.name))
+                        .getOrThrow();
+            }
+
+            return exam;
+        });
     }
 
 }

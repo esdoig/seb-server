@@ -37,6 +37,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import ch.ethz.seb.sebserver.gbl.api.API;
+import ch.ethz.seb.sebserver.gbl.api.APIMessage;
+import ch.ethz.seb.sebserver.gbl.api.APIMessage.APIMessageException;
 import ch.ethz.seb.sebserver.gbl.api.EntityType;
 import ch.ethz.seb.sebserver.gbl.api.POSTMapper;
 import ch.ethz.seb.sebserver.gbl.api.authorization.PrivilegeType;
@@ -63,6 +65,7 @@ import ch.ethz.seb.sebserver.webservice.servicelayer.authorization.impl.SEBServe
 import ch.ethz.seb.sebserver.webservice.servicelayer.bulkaction.BulkActionService;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.ConfigurationDAO;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.ConfigurationNodeDAO;
+import ch.ethz.seb.sebserver.webservice.servicelayer.dao.ExamConfigurationMapDAO;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.FilterMap;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.OrientationDAO;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.UserActivityLogDAO;
@@ -80,6 +83,7 @@ public class ConfigurationNodeController extends EntityController<ConfigurationN
 
     private final ConfigurationNodeDAO configurationNodeDAO;
     private final ConfigurationDAO configurationDAO;
+    private final ExamConfigurationMapDAO examConfigurationMapDAO;
     private final ViewDAO viewDAO;
     private final OrientationDAO orientationDAO;
     private final ExamConfigService sebExamConfigService;
@@ -90,6 +94,7 @@ public class ConfigurationNodeController extends EntityController<ConfigurationN
             final BulkActionService bulkActionService,
             final ConfigurationNodeDAO entityDAO,
             final UserActivityLogDAO userActivityLogDAO,
+            final ExamConfigurationMapDAO examConfigurationMapDAO,
             final PaginationService paginationService,
             final BeanValidationService beanValidationService,
             final ConfigurationDAO configurationDAO,
@@ -107,6 +112,7 @@ public class ConfigurationNodeController extends EntityController<ConfigurationN
 
         this.configurationDAO = configurationDAO;
         this.configurationNodeDAO = entityDAO;
+        this.examConfigurationMapDAO = examConfigurationMapDAO;
         this.viewDAO = viewDAO;
         this.orientationDAO = orientationDAO;
         this.sebExamConfigService = sebExamConfigService;
@@ -221,7 +227,7 @@ public class ConfigurationNodeController extends EntityController<ConfigurationN
     }
 
     @RequestMapping(
-            path = API.MODEL_ID_VAR_PATH_SEGMENT + API.CONFIGURATION_PLAIN_XML_DOWNLOAD_PATH_SEGMENT,
+            path = API.MODEL_ID_VAR_PATH_SEGMENT + API.CONFIGURATION_SEB_SETTINGS_DOWNLOAD_PATH_SEGMENT,
             method = RequestMethod.GET,
             produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
     public void downloadPlainXMLConfig(
@@ -323,11 +329,6 @@ public class ConfigurationNodeController extends EntityController<ConfigurationN
 
         this.entityDAO.byPK(modelId)
                 .flatMap(this.authorization::checkModify);
-
-//        final Configuration newConfig = this.configurationDAO
-//                .saveToHistory(modelId)
-//                .flatMap(this.configurationDAO::restoreToDefaultValues)
-//                .getOrThrow();
 
         final Configuration newConfig = this.configurationDAO
                 .getFollowupConfiguration(modelId)
@@ -510,7 +511,41 @@ public class ConfigurationNodeController extends EntityController<ConfigurationN
                                 "The Type of ConfigurationNode cannot change after creation");
                     }
                     return e;
-                });
+                })
+                .map(this::checkChangeToArchived);
+    }
+
+    private ConfigurationNode checkChangeToArchived(final ConfigurationNode entity) {
+        if (entity.status == ConfigurationStatus.ARCHIVED) {
+            // check if we have a change to archived
+            final ConfigurationNode persistentNode = this.configurationNodeDAO
+                    .byPK(entity.id)
+                    .getOrThrow();
+            // yes we have
+            if (persistentNode.status != ConfigurationStatus.ARCHIVED) {
+                // check if this is possible (no upcoming or running exams involved)
+                if (!this.examConfigurationMapDAO.checkNoActiveExamReferences(entity.id).getOr(false)) {
+                    throw new APIMessageException(
+                            APIMessage.ErrorMessage.INTEGRITY_VALIDATION
+                                    .of("Exam configuration has references to at least one upcoming or running exam."));
+                }
+            }
+        }
+
+        return entity;
+    }
+
+    @Override
+    protected Result<ConfigurationNode> validForDelete(final ConfigurationNode entity) {
+        return Result.tryCatch(() -> {
+            if (!this.examConfigurationMapDAO.checkNoActiveExamReferences(entity.id).getOr(false)) {
+                throw new APIMessageException(
+                        APIMessage.ErrorMessage.INTEGRITY_VALIDATION
+                                .of("Exam configuration has references to at least one upcoming or running exam."));
+            }
+
+            return entity;
+        });
     }
 
     @Override

@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.security.oauth2.common.OAuth2AccessToken;
 import org.springframework.security.oauth2.common.OAuth2RefreshToken;
 import org.springframework.security.oauth2.provider.OAuth2Authentication;
@@ -25,9 +26,12 @@ import org.springframework.security.oauth2.provider.token.TokenStore;
 import org.springframework.security.oauth2.provider.token.store.JdbcTokenStore;
 import org.springframework.transaction.annotation.Transactional;
 
+import ch.ethz.seb.sebserver.gbl.util.Utils;
+
 public class CachableJdbcTokenStore implements TokenStore {
 
-    public static final String CACHE_NAME = "ACCESS_TOKEN_STORE_CACHE";
+    public static final String ACCESS_TOKEN_CACHE_NAME = "ACCESS_TOKEN_CACHE";
+    public static final String AUTHENTICATION_TOKEN_CACHE = "AUTHENTICATION_TOKEN_CACHE";
 
     private static final Logger log = LoggerFactory.getLogger(CachableJdbcTokenStore.class);
 
@@ -39,7 +43,6 @@ public class CachableJdbcTokenStore implements TokenStore {
     }
 
     @Override
-    @Transactional
     public OAuth2AccessToken getAccessToken(final OAuth2Authentication authentication) {
         return this.jdbcTokenStore.getAccessToken(authentication);
     }
@@ -52,12 +55,13 @@ public class CachableJdbcTokenStore implements TokenStore {
 
     @Override
     @Cacheable(
-            cacheNames = CACHE_NAME,
+            cacheNames = AUTHENTICATION_TOKEN_CACHE,
             key = "#token",
             unless = "#result == null")
     public OAuth2Authentication readAuthentication(final OAuth2AccessToken token) {
+
         if (log.isDebugEnabled()) {
-            log.debug("Read authentication from persistent and cache if available");
+            log.debug("Read authentication from persistent and cache if available: {}", token.getValue());
         }
 
         return this.jdbcTokenStore.readAuthentication(token);
@@ -65,21 +69,46 @@ public class CachableJdbcTokenStore implements TokenStore {
 
     @Override
     public OAuth2Authentication readAuthentication(final String token) {
-        return this.jdbcTokenStore.readAuthentication(token);
+        final OAuth2Authentication authentication = this.jdbcTokenStore.readAuthentication(token);
+
+        if (log.isDebugEnabled()) {
+            if (authentication == null) {
+                log.debug(Utils.formatStackTracePrint(10, Thread.currentThread().getStackTrace()).toString());
+            } else {
+                log.debug("Read authentication from persistent: {}", token);
+            }
+        }
+
+        return authentication;
     }
 
     @Override
+    @Cacheable(
+            cacheNames = ACCESS_TOKEN_CACHE_NAME,
+            key = "#tokenValue",
+            unless = "#result == null")
     public OAuth2AccessToken readAccessToken(final String tokenValue) {
+
+        if (log.isDebugEnabled()) {
+            log.debug("Read access token from persistent and cache if available: {}", tokenValue);
+        }
+
         return this.jdbcTokenStore.readAccessToken(tokenValue);
     }
 
     @Override
-    @CacheEvict(
-            cacheNames = CACHE_NAME,
-            key = "#token")
+    @Caching(evict = {
+            @CacheEvict(
+                    cacheNames = AUTHENTICATION_TOKEN_CACHE,
+                    key = "#token"),
+            @CacheEvict(
+                    cacheNames = ACCESS_TOKEN_CACHE_NAME,
+                    key = "#token.value")
+    })
     public void removeAccessToken(final OAuth2AccessToken token) {
+
         if (log.isDebugEnabled()) {
-            log.debug("Evict token from cache and remove it also from persistent store");
+            log.debug("Evict token from cache and remove it also from persistent store: {}", token.getValue());
         }
 
         this.jdbcTokenStore.removeAccessToken(token);
