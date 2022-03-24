@@ -232,7 +232,6 @@ import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.useraccount.NewUs
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.useraccount.RegisterNewUser;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.useraccount.SaveUserAccount;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.SEBClientConfigDAO;
-import ch.ethz.seb.sebserver.webservice.servicelayer.lms.LmsAPIService;
 
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
 
@@ -240,19 +239,16 @@ public class UseCasesIntegrationTest extends GuiIntegrationTest {
 
     @Autowired
     private Cryptor cryptor;
-    @Autowired
-    private LmsAPIService lmsAPIService;
 
     @Before
     @Sql(scripts = { "classpath:schema-test.sql", "classpath:data-test.sql" })
     public void init() {
-        this.lmsAPIService.cleanup();
     }
 
     @After
     @Sql(scripts = { "classpath:schema-test.sql", "classpath:data-test.sql" })
     public void cleanup() {
-        this.lmsAPIService.cleanup();
+
     }
 
     @Test
