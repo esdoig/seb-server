@@ -242,12 +242,13 @@ public class UseCasesIntegrationTest extends GuiIntegrationTest {
     @Before
     @Sql(scripts = { "classpath:schema-test.sql", "classpath:data-test.sql" })
     public void init() {
+        // Nothing
     }
 
     @After
     @Sql(scripts = { "classpath:schema-test.sql", "classpath:data-test.sql" })
     public void cleanup() {
-
+        // Nothing
     }
 
     @Test
