@@ -146,12 +146,13 @@ jobs:
           anhefti/seb-server:${{ env.TAG_NAME }}
     - 
       name: Write signing key to disk
-      run: 'echo "$KEY" > cosign.key'
+      run: 'echo "$KEY" > /tmp/cosign.key'
       shell: bash
       env:
         KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
     -
       name: Sign the published Docker image
+      run: cosign sign --key /tmp/cosign.key docker.io/anhefti/seb-server:${{ env.TAG_NAME }}
+      shell: bash
       env:
         COSIGN_PASSWORD: ${{ secrets.DOCKER_SIGN_PASSWORD }}
-      run: cosign sign --key cosign.key docker.io/anhefti/seb-server:${{ env.TAG_NAME }}
