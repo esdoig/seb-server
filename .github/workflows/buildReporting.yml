@@ -158,4 +158,4 @@ jobs:
       name: Sign the published Docker image
       run: cosign sign --key /tmp/cosign.key docker.io/anhefti/seb-server:${{ env.TAG_NAME }}
       env:
-        COSIGN_PASSWORD: ${{ secrets.DOCKER_SIGN_PASSWORD }}
+        COSIGN_PASSWORD: "${{ secrets.DOCKER_SIGN_PASSWORD }}"
