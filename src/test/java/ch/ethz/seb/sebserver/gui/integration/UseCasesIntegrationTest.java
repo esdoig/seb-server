@@ -234,7 +234,6 @@ import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.useraccount.SaveU
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.SEBClientConfigDAO;
 
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
-
 public class UseCasesIntegrationTest extends GuiIntegrationTest {
 
     @Autowired
