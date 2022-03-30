@@ -150,19 +150,12 @@ jobs:
       uses: sigstore/cosign-installer@main
     - 
       name: Use Cosign to sign the image recursively
+      env:
+        docker_password: ${{ secrets.DOCKER_SIGN_PASSWORD }}
+        private_key: ${{ secrets.COSIGN_PRIVATE_KEY }}
       run: |
         # Sign the multiarch images, the signature is also pushed to the registry
-        echo -n "${{ secrets.DOCKER_SIGN_PASSWORD }}" | \
-          cosign sign --recursive --key <(echo -n "${{ secrets.COSIGN_PRIVATE_KEY }}") \
-          "docker.io/anhefti/seb-server:${{ env.TAG_NAME }}"
-#    -
-#      name: Write signing key to disk
-#      run: 'echo "$KEY" > /tmp/cosign.key'
-#      shell: bash
-#      env:
-#        KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
-#    -
-#      name: Sign the published Docker image
-#      run: cosign sign --key /tmp/cosign.key docker.io/anhefti/seb-server:${{ env.TAG_NAME }}
-#      env:
-#        COSIGN_PASSWORD: ${{ secrets.DOCKER_SIGN_PASSWORD }}
+        echo -n $docker_password | \
+          cosign sign --recursive --key <(echo -n $private_key) \
+          docker.io/anhefti/seb-server:${{ env.TAG_NAME }}
+   
