@@ -54,6 +54,7 @@ public class GuiWebsecurityConfig extends WebSecurityConfigurerAdapter {
         web
                 .ignoring()
                 .requestMatchers(PUBLIC_URLS)
+                .antMatchers("/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**")
                 .antMatchers(this.guiEntryPoint)
                 .antMatchers(this.remoteProctoringEndpoint)
                 .antMatchers(this.remoteProctoringEndpoint + this.remoteProctoringViewServletEndpoint + "/*");
