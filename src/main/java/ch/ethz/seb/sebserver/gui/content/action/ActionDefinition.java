@@ -417,6 +417,16 @@ public enum ActionDefinition {
             ImageIcon.DELETE,
             PageStateDefinitionImpl.EXAM_TEMPLATE_LIST,
             ActionCategory.FORM),
+    EXAM_TEMPLATE_PROCTORING_ON(
+            new LocTextKey("sebserver.examtemplate.proctoring.actions.open"),
+            ImageIcon.VISIBILITY,
+            PageStateDefinitionImpl.EXAM_TEMPLATE_VIEW,
+            ActionCategory.FORM),
+    EXAM_TEMPLATE_PROCTORING_OFF(
+            new LocTextKey("sebserver.examtemplate.proctoring.actions.open"),
+            ImageIcon.VISIBILITY_OFF,
+            PageStateDefinitionImpl.EXAM_TEMPLATE_VIEW,
+            ActionCategory.FORM),
 
     INDICATOR_TEMPLATE_NEW(
             new LocTextKey("sebserver.examtemplate.indicator.action.list.new"),
@@ -527,6 +537,18 @@ public enum ActionDefinition {
             PageStateDefinitionImpl.SEB_EXAM_CONFIG_LIST,
             ActionCategory.LIST_VARIA),
 
+    SEB_EXAM_CONFIG_BULK_STATE_CHANGE(
+            new LocTextKey("sebserver.examconfig.list.action.statechange"),
+            ImageIcon.SWITCH,
+            PageStateDefinitionImpl.SEB_EXAM_CONFIG_LIST,
+            ActionCategory.SEB_EXAM_CONFIG_LIST),
+
+    SEB_EXAM_CONFIG_BULK_RESET_TO_TEMPLATE(
+            new LocTextKey("sebserver.examconfig.list.action.reset"),
+            ImageIcon.EXPORT,
+            PageStateDefinitionImpl.SEB_EXAM_CONFIG_LIST,
+            ActionCategory.SEB_EXAM_CONFIG_LIST),
+
     SEB_EXAM_CONFIG_MODIFY_PROP_FROM_LIST(
             new LocTextKey("sebserver.examconfig.action.list.modify.properties"),
             ImageIcon.EDIT,
@@ -580,8 +602,12 @@ public enum ActionDefinition {
     SEB_EXAM_CONFIG_COPY_CONFIG_FROM_LIST(
             new LocTextKey("sebserver.examconfig.action.copy"),
             ImageIcon.COPY,
-            // PageStateDefinitionImpl.SEB_EXAM_CONFIG_PROP_EDIT,
             ActionCategory.SEB_EXAM_CONFIG_LIST),
+
+    SEB_EXAM_CONFIG_RESET_TO_TEMPLATE_SETTINGS(
+            new LocTextKey("sebserver.examconfig.action.restore.template.settings"),
+            ImageIcon.EXPORT,
+            ActionCategory.FORM),
     SEB_EXAM_CONFIG_COPY_CONFIG(
             new LocTextKey("sebserver.examconfig.action.copy"),
             ImageIcon.COPY,
@@ -831,6 +857,25 @@ public enum ActionDefinition {
             ImageIcon.CANCEL,
             PageStateDefinitionImpl.MONITORING_RUNNING_EXAM,
             ActionCategory.PROCTORING),
+
+    FINISHED_EXAM_VIEW_LIST(
+            new LocTextKey("sebserver.finished.action.list"),
+            PageStateDefinitionImpl.FINISHED_EXAM_LIST),
+    VIEW_FINISHED_EXAM_FROM_LIST(
+            new LocTextKey("sebserver.finished.exam.action.list.view"),
+            ImageIcon.SHOW,
+            PageStateDefinitionImpl.FINISHED_EXAM,
+            ActionCategory.FINISHED_EXAM_LIST),
+    VIEW_FINISHED_EXAM_CLIENT_CONNECTION(
+            new LocTextKey("sebserver.finished.exam.connection.action.view"),
+            ImageIcon.SHOW,
+            PageStateDefinitionImpl.FINISHED_CLIENT_CONNECTION,
+            ActionCategory.CLIENT_EVENT_LIST),
+    FINISHED_EXAM_BACK_TO_OVERVIEW(
+            new LocTextKey("sebserver.finished.exam.action.detail.view"),
+            ImageIcon.SHOW,
+            PageStateDefinitionImpl.FINISHED_EXAM,
+            ActionCategory.FORM),
 
     LOGS_USER_ACTIVITY_LIST(
             new LocTextKey("sebserver.logs.activity.userlogs"),

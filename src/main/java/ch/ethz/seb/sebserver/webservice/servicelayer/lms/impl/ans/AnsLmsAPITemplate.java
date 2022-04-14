@@ -18,7 +18,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -28,7 +27,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.CacheManager;
 import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.core.env.Environment;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -39,7 +37,6 @@ import org.springframework.web.client.RestTemplate;
 
 import ch.ethz.seb.sebserver.ClientHttpRequestFactoryService;
 import ch.ethz.seb.sebserver.gbl.api.APIMessage;
-import ch.ethz.seb.sebserver.gbl.async.AsyncService;
 import ch.ethz.seb.sebserver.gbl.client.ClientCredentialService;
 import ch.ethz.seb.sebserver.gbl.client.ClientCredentials;
 import ch.ethz.seb.sebserver.gbl.client.ProxyData;
@@ -59,7 +56,7 @@ import ch.ethz.seb.sebserver.webservice.servicelayer.lms.APITemplateDataSupplier
 import ch.ethz.seb.sebserver.webservice.servicelayer.lms.LmsAPIService;
 import ch.ethz.seb.sebserver.webservice.servicelayer.lms.LmsAPITemplate;
 import ch.ethz.seb.sebserver.webservice.servicelayer.lms.impl.AbstractCachedCourseAccess;
-import ch.ethz.seb.sebserver.webservice.servicelayer.lms.impl.ans.AnsLmsData.AccessibilitySettingsData;
+import ch.ethz.seb.sebserver.webservice.servicelayer.lms.impl.ans.AnsLmsData.SEBServerData;
 import ch.ethz.seb.sebserver.webservice.servicelayer.lms.impl.ans.AnsLmsData.AssignmentData;
 import ch.ethz.seb.sebserver.webservice.servicelayer.lms.impl.ans.AnsLmsData.UserData;
 
@@ -78,11 +75,9 @@ public class AnsLmsAPITemplate extends AbstractCachedCourseAccess implements Lms
             final ClientHttpRequestFactoryService clientHttpRequestFactoryService,
             final ClientCredentialService clientCredentialService,
             final APITemplateDataSupplier apiTemplateDataSupplier,
-            final AsyncService asyncService,
-            final Environment environment,
             final CacheManager cacheManager) {
 
-        super(asyncService, environment, cacheManager);
+        super(cacheManager);
 
         this.clientHttpRequestFactoryService = clientHttpRequestFactoryService;
         this.clientCredentialService = clientCredentialService;
@@ -170,7 +165,7 @@ public class AnsLmsAPITemplate extends AbstractCachedCourseAccess implements Lms
     @Override
     public Result<List<QuizData>> getQuizzes(final FilterMap filterMap) {
         return this
-                .protectedQuizzesRequest(filterMap)
+                .allQuizzesRequest(filterMap)
                 .map(quizzes -> quizzes.stream()
                         .filter(LmsAPIService.quizFilterPredicate(filterMap))
                         .collect(Collectors.toList()));
@@ -191,7 +186,7 @@ public class AnsLmsAPITemplate extends AbstractCachedCourseAccess implements Lms
                     });
 
             if (!leftIds.isEmpty()) {
-                result.addAll(super.protectedQuizzesRequest(leftIds).getOrThrow());
+                result.addAll(quizzesRequest(leftIds).getOrThrow());
             }
 
             return result;
@@ -205,7 +200,7 @@ public class AnsLmsAPITemplate extends AbstractCachedCourseAccess implements Lms
             return Result.of(fromCache);
         }
 
-        return super.protectedQuizRequest(id);
+        return quizRequest(id);
     }
 
     private List<QuizData> collectAllQuizzes(final AnsPersonalRestTemplate restTemplate) {
@@ -252,10 +247,10 @@ public class AnsLmsAPITemplate extends AbstractCachedCourseAccess implements Lms
     }
 
     private List<AssignmentData> getAssignments(final RestTemplate restTemplate) {
-        // NOTE: at the moment, seb_server_enabled cannot be set inside the Ans GUI,
+        // NOTE: at the moment, seb server cannot be enabled inside the Ans GUI,
         // only via the API, so we need to list all assignments. Maybe in the future,
         // we can only list those for which seb server has been enabled in Ans (like in OLAT):
-        //final String url = "/api/v2/search/assignments?query=seb_server_enabled:true";
+        //final String url = "/api/v2/search/assignments?query=integrations.safe_exam_browser_server.enabled:true";
         final String url = "/api/v2/search/assignments";
         return this.apiGetList(restTemplate, url, new ParameterizedTypeReference<List<AssignmentData>>() {
         });
@@ -279,33 +274,28 @@ public class AnsLmsAPITemplate extends AbstractCachedCourseAccess implements Lms
                 .collect(Collectors.toList());
     }
 
-    @Override
-    protected Supplier<List<QuizData>> allQuizzesSupplier(final FilterMap filterMap) {
+    protected Result<List<QuizData>> allQuizzesRequest(final FilterMap filterMap) {
         // We cannot filter by from-date or partial names using the Ans search API.
         // Only exact matches are permitted. So we're not implementing filtering
         // on the API level and always retrieve all assignments and let SEB server
         // do the filtering.
-        return () -> {
+        return Result.tryCatch(() -> {
             final List<QuizData> res = getRestTemplate()
                     .map(this::collectAllQuizzes)
                     .getOrThrow();
             super.putToCache(res);
             return res;
-        };
+        });
     }
 
-    @Override
-    protected Supplier<Collection<QuizData>> quizzesSupplier(final Set<String> ids) {
-        return () -> getRestTemplate()
-                .map(t -> this.getQuizzesByIds(t, ids))
-                .getOrThrow();
+    protected Result<Collection<QuizData>> quizzesRequest(final Set<String> ids) {
+        return getRestTemplate()
+                .map(t -> this.getQuizzesByIds(t, ids));
     }
 
-    @Override
-    protected Supplier<QuizData> quizSupplier(final String id) {
-        return () -> getRestTemplate()
-                .map(t -> this.getQuizByAssignmentId(t, id))
-                .getOrThrow();
+    protected Result<QuizData> quizRequest(final String id) {
+        return getRestTemplate()
+                .map(t -> this.getQuizByAssignmentId(t, id));
     }
 
     private ExamineeAccountDetails getExamineeById(final RestTemplate restTemplate, final String id) {
@@ -324,17 +314,21 @@ public class AnsLmsAPITemplate extends AbstractCachedCourseAccess implements Lms
     }
 
     @Override
-    protected Supplier<ExamineeAccountDetails> accountDetailsSupplier(final String id) {
-        return () -> getRestTemplate()
-                .map(t -> this.getExamineeById(t, id))
-                .getOrThrow();
+    public Result<ExamineeAccountDetails> getExamineeAccountDetails(final String examineeUserId) {
+        return getRestTemplate().map(t -> this.getExamineeById(t, examineeUserId));
     }
 
     @Override
-    protected Supplier<Chapters> getCourseChaptersSupplier(final String courseId) {
-        return () -> {
-            throw new UnsupportedOperationException("not available yet");
-        };
+    public String getExamineeName(final String examineeUserId) {
+        return getExamineeAccountDetails(examineeUserId)
+                .map(ExamineeAccountDetails::getDisplayName)
+                .onError(error -> log.warn("Failed to request user-name for ID: {}", error.getMessage(), error))
+                .getOr(examineeUserId);
+    }
+
+    @Override
+    public Result<Chapters> getCourseChapters(final String courseId) {
+        return Result.ofError(new UnsupportedOperationException("not available yet"));
     }
 
     @Override
@@ -346,7 +340,7 @@ public class AnsLmsAPITemplate extends AbstractCachedCourseAccess implements Lms
     private SEBRestriction getRestrictionForAssignmentId(final RestTemplate restTemplate, final String id) {
         final String url = String.format("/api/v2/assignments/%s", id);
         final AssignmentData assignment = this.apiGet(restTemplate, url, AssignmentData.class);
-        final AccessibilitySettingsData ts = assignment.accessibility_settings;
+        final SEBServerData ts = assignment.integrations.safe_exam_browser_server;
         return new SEBRestriction(Long.valueOf(id), ts.config_keys, null, new HashMap<String, String>());
     }
 
@@ -354,24 +348,24 @@ public class AnsLmsAPITemplate extends AbstractCachedCourseAccess implements Lms
             final SEBRestriction restriction) {
         final String url = String.format("/api/v2/assignments/%s", id);
         final AssignmentData assignment = getAssignmentById(restTemplate, id);
-        assignment.accessibility_settings.config_keys = new ArrayList<>(restriction.configKeys);
-        assignment.accessibility_settings.seb_server_enabled = true;
+        assignment.integrations.safe_exam_browser_server.config_keys = new ArrayList<>(restriction.configKeys);
+        assignment.integrations.safe_exam_browser_server.enabled = true;
         @SuppressWarnings("unused")
         final AssignmentData r =
                 this.apiPatch(restTemplate, url, assignment, AssignmentData.class, AssignmentData.class);
-        final AccessibilitySettingsData ts = assignment.accessibility_settings;
+        final SEBServerData ts = assignment.integrations.safe_exam_browser_server;
         return new SEBRestriction(Long.valueOf(id), ts.config_keys, null, new HashMap<String, String>());
     }
 
     private SEBRestriction deleteRestrictionForAssignmentId(final RestTemplate restTemplate, final String id) {
         final String url = String.format("/api/v2/assignments/%s", id);
         final AssignmentData assignment = getAssignmentById(restTemplate, id);
-        assignment.accessibility_settings.config_keys = null;
-        assignment.accessibility_settings.seb_server_enabled = false;
+        assignment.integrations.safe_exam_browser_server.config_keys = null;
+        assignment.integrations.safe_exam_browser_server.enabled = false;
         @SuppressWarnings("unused")
         final AssignmentData r =
                 this.apiPatch(restTemplate, url, assignment, AssignmentData.class, AssignmentData.class);
-        final AccessibilitySettingsData ts = assignment.accessibility_settings;
+        final SEBServerData ts = assignment.integrations.safe_exam_browser_server;
         return new SEBRestriction(Long.valueOf(id), ts.config_keys, null, new HashMap<String, String>());
     }
 
@@ -406,7 +400,7 @@ public class AnsLmsAPITemplate extends AbstractCachedCourseAccess implements Lms
 
     private List<PageLink> parseLinks(final String header) {
         // Extracts the individual links from a header that looks like this:
-        // <https://staging.ans.app/api/v2/search/assignments?query=seb_server_enabled%3Atrue&page=1&items=20>; rel="first",<https://staging.ans.app/api/v2/search/assignments?query=seb_server_enabled%3Atrue&page=1&items=20>; rel="last"
+        // <https://staging.ans.app/api/v2/search/assignments?page=1&items=20>; rel="first",<https://staging.ans.app/api/v2/search/assignments?page=1&items=20>; rel="last"
         final Stream<String> links = Arrays.stream(header.split(","));
         return links
                 .map(s -> {

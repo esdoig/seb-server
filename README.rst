@@ -19,6 +19,14 @@ Development:
     :target: https://github.com/SafeExamBrowser/seb-server/tree/development
 
 
+---------
+
+**Note regarding to** `CVE-2021-44228 <https://nvd.nist.gov/vuln/detail/CVE-2021-44228>`_: SEB Server is **not affected** by the vulnerability. For more information please read `Log4J2 Vulnerability and Spring Boot <https://spring.io/blog/2021/12/10/log4j2-vulnerability-and-spring-boot>`_
+
+However, to prevent security scanner to alert false-positives we decided to make a patch for the latest version of SEB Server (v1.2.6) including the Log4j 2.16.0 library. If you want to update please make sure your installation refer to version v1.2-stable, v1.2-latest or v1.2.6. Then simply make a update/rebuild of your seb-server docker image.
+
+---------
+
 About
 -----
 The Safe Exam Browser Server web application simplifies and centralizes the configuration of Safe Exam Browser clients for exams. It interacts with a learning management or exam system for setting up and conducting e-assessments with Safe Exam Browser. It also improves security by allowing to monitor connected Safe Exam Browser clients in real time during e-assessments. 
@@ -57,62 +65,47 @@ a more automated and secure setup for high-stake exams.
     :align: center
     :target: https://raw.githubusercontent.com/SafeExamBrowser/seb-server/master/docs/images/seb-sebserver-lms.png
     
-SEB Server Version 1.1.0 is out
+
+SEB Server Version 1.3.0 is out
 -------------------------------
 
 New features:
 
-- Moodle integration part 1 (Course Access)
-- Live proctoring with Jitsi Meet integration (Prototype)
-- Deletion of user accounts
-- Deletion of exams
-- User registration rate limit
-- Inform user about unpublished chances in exam configuration settings
-- Added "Ignore SEB Service" attributes in exam configuration settings
-- Additional monitoring indicator (WIFI and battery status)
-- Notification events (experimental)
-- Download/Export Connection Configuration from Exam page to start an exam directly "Export Exam Connection Configuration"
+- Table Filter: Enter input on filter input field triggers filter action
+- New: "Exam Templates" to predefine exam configurations that can be applied on exam import
+- Exam Configuration: Copy exam configuration on exam configuration table view
+- Exam Templates: Add an exam configuration template via exam template to automatically create an exam configuration on import
+- Exam Templates: Add indicators for exam template that are automatically applied on exam import
+- Monitoring: Add new filter to filter active connections (without any incidences)
+- Monitoring: Add connection summary for each connection state filter to show how many connections are present per state
+- Monitoring: Improved and extended connection information about user/login change and display client info like SEB version, OS Version...
+- Monitoring: Improved distributed setup with Docker/Kubernetes
+- Monitoring Notifications: Added Raise-Hand Notification and SEB Lock-Screen Notification
+
 
 Bugfixes:
 
-- Monitoring table update, incorrect table rendering after status changed
-- Remove caching for distributed setup
-- Add lookup and automated master service allocation for distributed setup
+- Various distributed setup cache issues
+- Fixed Sorting of exam in exam list
+- Fixed LMS Lockup quizzes filter
+- Fixed Exam proctoring settings verification
+- Various proctoring issues for proctoring with Zoom
+
 
 Changes:
 
-- "Client Configuration" is now named "Connection Configuration"
-- "Export Exam Configuration" is now named "Export SEB Settings" and can be found in the "SEB Settings" view of an "Exam Configuration"
+- Overall: Extended GUI server session timeout
+- User Roles: Enhanced "Exam Administrator" role to see all running exams and be able to support them as well
+- LMS Lockup/Exam: Show Moodle course name together with the quiz name on LMS lockup as well as on exams
+- Exam Configuration: Streamline "Exam Configuration" settings with the newest SEB versions
+- Monitoring: Improved indicator and monitoring data performance for distributed setups
+- Monitoring: Changed default colors for active connections and indicators (No color if no incidence)
 
-SEB Server Version 1.2.0 is out
--------------------------------
+Docker-Image:
 
-New features:
+    Exact version: docker pull anhefti/seb-server:v1.3.0 (sha256:35692e304ab8f7d198524ff948df472e1eb362f1eb7f0b0fa358d01556011e59)
+    Latest stable minor version with patches: docker pull anhefti/seb-server:v1.3-latest
 
-- Integrated X.509 certificate store to upload and use X.509 certificate for new and upcoming features
-- Connection configuration encryption with X.509 certificate
-- Additional exam configuration attributes of later added features of the SEB config-tool
-- Default sorting and filtering for all lists
-- Deleting of SEB client logs on the SEB Client Logs view
-- Zoom meeting service integration for live proctoring (this is still an experimental feature)
-- Ability to switch live proctoring features like town-hall, one-to-one room or broadcasting, on and off
-
-Bugfixes:
-
-- Exam configuration import gives more and clear information about the purpose of different imports
-- Color picker is now initialized with selected color
-- Fixed user-account deactivation on user-account list
-- Fixed indicator list on exam shows only up to five entries
-- Fixed none scrolling action pane
-- Fixed exam import of Moodle LMS integration with different quizzes on same course
-- Various bug-fixes and improvements for distributed setup of SEB Server (separated and scaled webservice and guiservice)
-
-Changes:
-
-- Updated MariaDB version for integrated setups from version 10.3 to 10.5
-- Updated Spring Boot version from 2.1.0.RELEASE to 2.3.7.RELEASE
-- Build pipeline automatically build the SEB Server docker image and put it to docker hub now
-- New SEB Server docker setup (dockerhost) that pulls the needed images from docker-hub
 
 
 SEB - SEB Server Compatibility

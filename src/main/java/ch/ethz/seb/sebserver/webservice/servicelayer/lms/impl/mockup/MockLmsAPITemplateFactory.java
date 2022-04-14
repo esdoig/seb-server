@@ -9,8 +9,10 @@
 package ch.ethz.seb.sebserver.webservice.servicelayer.lms.impl.mockup;
 
 import org.springframework.context.annotation.Lazy;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
+import ch.ethz.seb.sebserver.gbl.async.AsyncService;
 import ch.ethz.seb.sebserver.gbl.model.institution.LmsSetup.LmsType;
 import ch.ethz.seb.sebserver.gbl.profile.WebServiceProfile;
 import ch.ethz.seb.sebserver.gbl.util.Result;
@@ -18,15 +20,24 @@ import ch.ethz.seb.sebserver.webservice.WebserviceInfo;
 import ch.ethz.seb.sebserver.webservice.servicelayer.lms.APITemplateDataSupplier;
 import ch.ethz.seb.sebserver.webservice.servicelayer.lms.LmsAPITemplate;
 import ch.ethz.seb.sebserver.webservice.servicelayer.lms.LmsAPITemplateFactory;
+import ch.ethz.seb.sebserver.webservice.servicelayer.lms.impl.LmsAPITemplateAdapter;
 
 @Lazy
 @Service
 @WebServiceProfile
 public class MockLmsAPITemplateFactory implements LmsAPITemplateFactory {
 
+    private final AsyncService asyncService;
     private final WebserviceInfo webserviceInfo;
+    private final Environment environment;
 
-    public MockLmsAPITemplateFactory(final WebserviceInfo webserviceInfo) {
+    public MockLmsAPITemplateFactory(
+            final AsyncService asyncService,
+            final Environment environment,
+            final WebserviceInfo webserviceInfo) {
+
+        this.environment = environment;
+        this.asyncService = asyncService;
         this.webserviceInfo = webserviceInfo;
     }
 
@@ -37,9 +48,19 @@ public class MockLmsAPITemplateFactory implements LmsAPITemplateFactory {
 
     @Override
     public Result<LmsAPITemplate> create(final APITemplateDataSupplier apiTemplateDataSupplier) {
-        return Result.tryCatch(() -> new MockupLmsAPITemplate(
+
+        final MockCourseAccessAPI mockCourseAccessAPI = new MockCourseAccessAPI(
                 apiTemplateDataSupplier,
-                this.webserviceInfo));
+                this.webserviceInfo);
+
+        final MockSEBRestrictionAPI mockSEBRestrictionAPI = new MockSEBRestrictionAPI();
+
+        return Result.tryCatch(() -> new LmsAPITemplateAdapter(
+                this.asyncService,
+                this.environment,
+                apiTemplateDataSupplier,
+                mockCourseAccessAPI,
+                mockSEBRestrictionAPI));
     }
 
 }

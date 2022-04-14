@@ -8,7 +8,6 @@
 
 package ch.ethz.seb.sebserver.webservice.weblayer.api;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -21,8 +20,6 @@ import javax.validation.Valid;
 
 import org.apache.commons.lang3.StringUtils;
 import org.mybatis.dynamic.sql.SqlTable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,16 +39,17 @@ import ch.ethz.seb.sebserver.gbl.model.PageSortOrder;
 import ch.ethz.seb.sebserver.gbl.model.exam.ExamTemplate;
 import ch.ethz.seb.sebserver.gbl.model.exam.Indicator;
 import ch.ethz.seb.sebserver.gbl.model.exam.IndicatorTemplate;
+import ch.ethz.seb.sebserver.gbl.model.exam.ProctoringServiceSettings;
 import ch.ethz.seb.sebserver.gbl.profile.WebServiceProfile;
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.ExamTemplateRecordDynamicSqlSupport;
 import ch.ethz.seb.sebserver.webservice.servicelayer.PaginationService;
 import ch.ethz.seb.sebserver.webservice.servicelayer.authorization.AuthorizationService;
 import ch.ethz.seb.sebserver.webservice.servicelayer.authorization.UserService;
 import ch.ethz.seb.sebserver.webservice.servicelayer.bulkaction.BulkActionService;
-import ch.ethz.seb.sebserver.webservice.servicelayer.dao.EntityDAO;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.ExamTemplateDAO;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.ResourceNotFoundException;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.UserActivityLogDAO;
+import ch.ethz.seb.sebserver.webservice.servicelayer.exam.ProctoringAdminService;
 import ch.ethz.seb.sebserver.webservice.servicelayer.validation.BeanValidationService;
 
 @WebServiceProfile
@@ -59,15 +57,17 @@ import ch.ethz.seb.sebserver.webservice.servicelayer.validation.BeanValidationSe
 @RequestMapping("${sebserver.webservice.api.admin.endpoint}" + API.EXAM_TEMPLATE_ENDPOINT)
 public class ExamTemplateController extends EntityController<ExamTemplate, ExamTemplate> {
 
-    private static final Logger log = LoggerFactory.getLogger(ExamTemplateController.class);
+    private final ExamTemplateDAO examTemplateDAO;
+    private final ProctoringAdminService proctoringServiceSettingsService;
 
     protected ExamTemplateController(
             final AuthorizationService authorization,
             final BulkActionService bulkActionService,
-            final EntityDAO<ExamTemplate, ExamTemplate> entityDAO,
+            final ExamTemplateDAO entityDAO,
             final UserActivityLogDAO userActivityLogDAO,
             final PaginationService paginationService,
-            final BeanValidationService beanValidationService) {
+            final BeanValidationService beanValidationService,
+            final ProctoringAdminService proctoringServiceSettingsService) {
 
         super(
                 authorization,
@@ -76,6 +76,9 @@ public class ExamTemplateController extends EntityController<ExamTemplate, ExamT
                 userActivityLogDAO,
                 paginationService,
                 beanValidationService);
+
+        this.examTemplateDAO = entityDAO;
+        this.proctoringServiceSettingsService = proctoringServiceSettingsService;
     }
 
     @RequestMapping(
@@ -94,6 +97,9 @@ public class ExamTemplateController extends EntityController<ExamTemplate, ExamT
                 .flatMap(this::checkReadAccess)
                 .getOrThrow();
     }
+
+    // ****************************************************************************
+    // **** Indicator
 
     @RequestMapping(
             path = API.MODEL_ID_VAR_PATH_SEGMENT
@@ -177,41 +183,17 @@ public class ExamTemplateController extends EntityController<ExamTemplate, ExamT
 
         // check write privilege for requested institution and concrete entityType
         this.checkWritePrivilege(institutionId);
-
         final POSTMapper postMap = new POSTMapper(allRequestParams, request.getQueryString())
                 .putIfAbsent(API.PARAM_INSTITUTION_ID, String.valueOf(institutionId));
 
-        final String examTemplateId = postMap.getString(IndicatorTemplate.ATTR_EXAM_TEMPLATE_ID);
-
-        final ExamTemplate examTemplate = super.entityDAO
-                .byModelId(examTemplateId)
+        return this.beanValidationService
+                .validateBean(new IndicatorTemplate(
+                        null,
+                        postMap.getLong(IndicatorTemplate.ATTR_EXAM_TEMPLATE_ID),
+                        postMap))
+                .flatMap(this.examTemplateDAO::createNewIndicatorTemplate)
+                .flatMap(this.userActivityLogDAO::logCreate)
                 .getOrThrow();
-
-        final IndicatorTemplate newIndicator = new IndicatorTemplate(
-                (long) examTemplate.getIndicatorTemplates().size(),
-                Long.parseLong(examTemplateId),
-                postMap);
-
-        this.beanValidationService.validateBean(newIndicator)
-                .getOrThrow();
-
-        final ArrayList<IndicatorTemplate> indicators = new ArrayList<>(examTemplate.indicatorTemplates);
-        indicators.add(newIndicator);
-        final ExamTemplate newExamTemplate = new ExamTemplate(
-                examTemplate.id,
-                null, null, null, null, null, null,
-                examTemplate.institutionalDefault,
-                indicators,
-                null);
-
-        super.entityDAO
-                .save(newExamTemplate)
-                .getOrThrow();
-
-        this.userActivityLogDAO.logCreate(newIndicator)
-                .onError(error -> log.error("Failed to log indicator template creation: {}", newIndicator, error));
-
-        return newIndicator;
     }
 
     @RequestMapping(
@@ -228,46 +210,11 @@ public class ExamTemplateController extends EntityController<ExamTemplate, ExamT
 
         // check modify privilege for requested institution and concrete entityType
         this.checkModifyPrivilege(institutionId);
-
-        final ExamTemplate examTemplate = super.entityDAO
-                .byPK(modifyData.examTemplateId)
+        return this.beanValidationService
+                .validateBean(modifyData)
+                .flatMap(this.examTemplateDAO::saveIndicatorTemplate)
+                .flatMap(this.userActivityLogDAO::logModify)
                 .getOrThrow();
-
-        final String modelId = modifyData.getModelId();
-        final List<IndicatorTemplate> newIndicators = examTemplate.indicatorTemplates
-                .stream()
-                .map(i -> {
-                    if (modelId.equals(i.getModelId())) {
-                        return new IndicatorTemplate(
-                                modifyData.id,
-                                modifyData.examTemplateId,
-                                modifyData.name,
-                                (modifyData.type != null) ? modifyData.type : i.type,
-                                (modifyData.defaultColor != null) ? modifyData.defaultColor : i.defaultColor,
-                                (modifyData.defaultIcon != null) ? modifyData.defaultIcon : i.defaultIcon,
-                                (modifyData.tags != null) ? modifyData.tags : i.tags,
-                                (modifyData.thresholds != null) ? modifyData.thresholds : i.thresholds);
-                    } else {
-                        return i;
-                    }
-                })
-                .collect(Collectors.toList());
-
-        final ExamTemplate newExamTemplate = new ExamTemplate(
-                examTemplate.id,
-                null, null, null, null, null, null,
-                examTemplate.institutionalDefault,
-                newIndicators,
-                null);
-
-        super.entityDAO
-                .save(newExamTemplate)
-                .getOrThrow();
-
-        this.userActivityLogDAO.logModify(modifyData)
-                .onError(error -> log.error("Failed to log indicator template modification: {}", modifyData, error));
-
-        return modifyData;
     }
 
     @RequestMapping(
@@ -286,36 +233,64 @@ public class ExamTemplateController extends EntityController<ExamTemplate, ExamT
 
         // check write privilege for requested institution and concrete entityType
         this.checkWritePrivilege(institutionId);
-
-        final ExamTemplate examTemplate = super.entityDAO
-                .byModelId(parentModelId)
+        return this.examTemplateDAO
+                .deleteIndicatorTemplate(parentModelId, modelId)
+                .flatMap(this.userActivityLogDAO::logDelete)
                 .getOrThrow();
-
-        final IndicatorTemplate toDelete = examTemplate.indicatorTemplates
-                .stream()
-                .filter(i -> modelId.equals(i.getModelId()))
-                .findFirst()
-                .orElse(null);
-
-        final List<IndicatorTemplate> newIndicators = new ArrayList<>(examTemplate.indicatorTemplates);
-        newIndicators.remove(toDelete);
-
-        final ExamTemplate newExamTemplate = new ExamTemplate(
-                examTemplate.id,
-                null, null, null, null, null, null,
-                examTemplate.institutionalDefault,
-                newIndicators,
-                null);
-
-        super.entityDAO
-                .save(newExamTemplate)
-                .getOrThrow();
-
-        this.userActivityLogDAO.logDelete(toDelete)
-                .onError(error -> log.error("Failed to log indicator template modification: {}", toDelete, error));
-
-        return new EntityKey(modelId, EntityType.INDICATOR);
     }
+
+    // **** Indicator
+    // ****************************************************************************
+    // ****************************************************************************
+    // **** Proctoring
+
+    @RequestMapping(
+            path = API.MODEL_ID_VAR_PATH_SEGMENT
+                    + API.EXAM_ADMINISTRATION_PROCTORING_PATH_SEGMENT,
+            method = RequestMethod.GET,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public ProctoringServiceSettings getProctoringServiceSettings(
+            @RequestParam(
+                    name = API.PARAM_INSTITUTION_ID,
+                    required = true,
+                    defaultValue = UserService.USERS_INSTITUTION_AS_DEFAULT) final Long institutionId,
+            @PathVariable final Long modelId) {
+
+        checkReadPrivilege(institutionId);
+        return this.proctoringServiceSettingsService
+                .getProctoringSettings(new EntityKey(modelId, EntityType.EXAM_TEMPLATE))
+                .getOrThrow();
+    }
+
+    @RequestMapping(
+            path = API.MODEL_ID_VAR_PATH_SEGMENT
+                    + API.EXAM_ADMINISTRATION_PROCTORING_PATH_SEGMENT,
+            method = RequestMethod.POST,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public ExamTemplate saveProctoringServiceSettings(
+            @RequestParam(
+                    name = API.PARAM_INSTITUTION_ID,
+                    required = true,
+                    defaultValue = UserService.USERS_INSTITUTION_AS_DEFAULT) final Long institutionId,
+            @PathVariable(API.PARAM_MODEL_ID) final Long examId,
+            @Valid @RequestBody final ProctoringServiceSettings proctoringServiceSettings) {
+
+        checkModifyPrivilege(institutionId);
+        return this.entityDAO
+                .byPK(examId)
+                .flatMap(this.authorization::checkModify)
+                .map(exam -> {
+                    this.proctoringServiceSettingsService.saveProctoringServiceSettings(
+                            new EntityKey(examId, EntityType.EXAM_TEMPLATE),
+                            proctoringServiceSettings);
+                    return exam;
+                })
+                .flatMap(this.userActivityLogDAO::logModify)
+                .getOrThrow();
+    }
+
+    // **** Proctoring
+    // ****************************************************************************
 
     @Override
     protected ExamTemplate createNew(final POSTMapper postParams) {

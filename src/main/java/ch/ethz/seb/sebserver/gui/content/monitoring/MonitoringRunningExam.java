@@ -13,6 +13,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 import org.eclipse.swt.SWT;
@@ -55,7 +56,7 @@ import ch.ethz.seb.sebserver.gui.service.push.ServerPushService;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.RestService;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.exam.GetExam;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.exam.GetIndicators;
-import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.exam.GetProctoringSettings;
+import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.exam.GetExamProctoringSettings;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.auth.CurrentUser;
 import ch.ethz.seb.sebserver.gui.service.session.ClientConnectionTable;
 import ch.ethz.seb.sebserver.gui.service.session.FullPageMonitoringGUIUpdate;
@@ -69,8 +70,6 @@ import ch.ethz.seb.sebserver.gui.service.session.proctoring.ProctoringGUIService
 @Component
 @GuiProfile
 public class MonitoringRunningExam implements TemplateComposer {
-
-    //private static final Logger log = LoggerFactory.getLogger(MonitoringRunningExam.class);
 
     private static final LocTextKey EMPTY_SELECTION_TEXT_KEY =
             new LocTextKey("sebserver.monitoring.exam.connection.emptySelection");
@@ -98,7 +97,7 @@ public class MonitoringRunningExam implements TemplateComposer {
     private final boolean distributedSetup;
     private final long pollInterval;
 
-    protected MonitoringRunningExam(
+    public MonitoringRunningExam(
             final ServerPushService serverPushService,
             final PageService pageService,
             final AsyncRunner asyncRunner,
@@ -122,10 +121,9 @@ public class MonitoringRunningExam implements TemplateComposer {
 
     @Override
     public void compose(final PageContext pageContext) {
-        final RestService restService = this.resourceService.getRestService();
         final EntityKey entityKey = pageContext.getEntityKey();
         final CurrentUser currentUser = this.resourceService.getCurrentUser();
-        final Exam exam = restService.getBuilder(GetExam.class)
+        final Exam exam = this.restService.getBuilder(GetExam.class)
                 .withURIVariable(API.PARAM_MODEL_ID, entityKey.modelId)
                 .call()
                 .getOrThrow();
@@ -134,7 +132,7 @@ public class MonitoringRunningExam implements TemplateComposer {
                 exam.supporter.contains(user.uuid);
         final BooleanSupplier isExamSupporter = () -> supporting || user.hasRole(UserRole.EXAM_ADMIN);
 
-        final Collection<Indicator> indicators = restService.getBuilder(GetIndicators.class)
+        final Collection<Indicator> indicators = this.restService.getBuilder(GetIndicators.class)
                 .withQueryParam(Indicator.FILTER_ATTR_EXAM_ID, entityKey.modelId)
                 .call()
                 .getOrThrow();
@@ -175,7 +173,7 @@ public class MonitoringRunningExam implements TemplateComposer {
                                 .withParentEntityKey(entityKey)
                                 .create(),
                         this.pageService)
-                .withSelectionListener(this.pageService.getSelectionPublisher(
+                .withSelectionListener(this.getSelectionPublisherClientConnectionTable(
                         pageContext,
                         ActionDefinition.MONITOR_EXAM_CLIENT_CONNECTION,
                         ActionDefinition.MONITOR_EXAM_QUIT_SELECTED,
@@ -245,7 +243,7 @@ public class MonitoringRunningExam implements TemplateComposer {
                     isExamSupporter));
 
             final ProctoringServiceSettings proctoringSettings = this.restService
-                    .getBuilder(GetProctoringSettings.class)
+                    .getBuilder(GetExamProctoringSettings.class)
                     .withURIVariable(API.PARAM_MODEL_ID, entityKey.modelId)
                     .call()
                     .getOr(null);
@@ -506,6 +504,15 @@ public class MonitoringRunningExam implements TemplateComposer {
         clientTable.removeSelection();
         clientTable.forceUpdateAll();
         return action;
+    }
+
+    private Consumer<ClientConnectionTable> getSelectionPublisherClientConnectionTable(
+            final PageContext pageContext,
+            final ActionDefinition... actionDefinitions) {
+
+        return table -> this.pageService.firePageEvent(
+                new ActionActivationEvent(table.getSingleSelection() != null, actionDefinitions),
+                pageContext);
     }
 
 }

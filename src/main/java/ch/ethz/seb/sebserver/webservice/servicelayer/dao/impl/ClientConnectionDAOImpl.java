@@ -32,6 +32,7 @@ import ch.ethz.seb.sebserver.gbl.api.API.BulkActionType;
 import ch.ethz.seb.sebserver.gbl.api.EntityType;
 import ch.ethz.seb.sebserver.gbl.model.EntityDependency;
 import ch.ethz.seb.sebserver.gbl.model.EntityKey;
+import ch.ethz.seb.sebserver.gbl.model.exam.Exam;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientConnection;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientConnection.ConnectionStatus;
 import ch.ethz.seb.sebserver.gbl.profile.WebServiceProfile;
@@ -45,6 +46,8 @@ import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.ClientIndicatorRe
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.ClientIndicatorRecordMapper;
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.ClientInstructionRecordDynamicSqlSupport;
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.ClientInstructionRecordMapper;
+import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.ClientNotificationRecordDynamicSqlSupport;
+import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.ClientNotificationRecordMapper;
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.ExamRecordDynamicSqlSupport;
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.InstitutionRecordDynamicSqlSupport;
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.mapper.RemoteProctoringRoomRecordDynamicSqlSupport;
@@ -66,17 +69,20 @@ public class ClientConnectionDAOImpl implements ClientConnectionDAO {
     private final ClientEventRecordMapper clientEventRecordMapper;
     private final ClientInstructionRecordMapper clientInstructionRecordMapper;
     private final ClientIndicatorRecordMapper clientIndicatorRecordMapper;
+    private final ClientNotificationRecordMapper clientNotificationRecordMapper;
 
     protected ClientConnectionDAOImpl(
             final ClientConnectionRecordMapper clientConnectionRecordMapper,
             final ClientEventRecordMapper clientEventRecordMapper,
             final ClientInstructionRecordMapper clientInstructionRecordMapper,
-            final ClientIndicatorRecordMapper clientIndicatorRecordMapper) {
+            final ClientIndicatorRecordMapper clientIndicatorRecordMapper,
+            final ClientNotificationRecordMapper clientNotificationRecordMapper) {
 
         this.clientConnectionRecordMapper = clientConnectionRecordMapper;
         this.clientEventRecordMapper = clientEventRecordMapper;
         this.clientInstructionRecordMapper = clientInstructionRecordMapper;
         this.clientIndicatorRecordMapper = clientIndicatorRecordMapper;
+        this.clientNotificationRecordMapper = clientNotificationRecordMapper;
     }
 
     @Override
@@ -504,6 +510,14 @@ public class ClientConnectionDAOImpl implements ClientConnectionDAO {
                     .build()
                     .execute();
 
+            // delete all related client notifications
+            this.clientNotificationRecordMapper.deleteByExample()
+                    .where(
+                            ClientNotificationRecordDynamicSqlSupport.clientConnectionId,
+                            SqlBuilder.isIn(ids))
+                    .build()
+                    .execute();
+
             // then delete all related client instructions
             final List<String> connectionTokens = this.clientConnectionRecordMapper.selectByExample()
                     .where(
@@ -678,6 +692,33 @@ public class ClientConnectionDAOImpl implements ClientConnectionDAO {
             }
 
             return records.get(0);
+        });
+    }
+
+    @Override
+    @Transactional
+    public Result<Exam> deleteClientIndicatorValues(final Exam exam) {
+        return Result.tryCatch(() -> {
+
+            final List<Long> clientConnections = this.clientConnectionRecordMapper.selectIdsByExample()
+                    .where(
+                            ClientConnectionRecordDynamicSqlSupport.examId,
+                            SqlBuilder.isEqualTo(exam.id))
+                    .build()
+                    .execute();
+
+            if (clientConnections == null || clientConnections.isEmpty()) {
+                return exam;
+            }
+
+            this.clientIndicatorRecordMapper.deleteByExample()
+                    .where(
+                            ClientIndicatorRecordDynamicSqlSupport.clientConnectionId,
+                            SqlBuilder.isIn(clientConnections))
+                    .build()
+                    .execute();
+
+            return exam;
         });
     }
 

@@ -20,7 +20,6 @@ import ch.ethz.seb.sebserver.gbl.Constants;
 import ch.ethz.seb.sebserver.gbl.model.exam.Indicator;
 import ch.ethz.seb.sebserver.gbl.model.exam.Indicator.IndicatorType;
 import ch.ethz.seb.sebserver.gbl.model.session.ClientEvent;
-import ch.ethz.seb.sebserver.gbl.util.Utils;
 import ch.ethz.seb.sebserver.webservice.datalayer.batis.model.ClientEventRecord;
 
 @Lazy
@@ -35,14 +34,9 @@ public final class PingIntervalClientIndicator extends AbstractPingIndicator {
 
     private boolean hidden = false;
 
-    public PingIntervalClientIndicator(final DistributedIndicatorValueService distributedPingCache) {
-        super(distributedPingCache);
+    public PingIntervalClientIndicator(final DistributedIndicatorValueService distributedIndicatorValueService) {
+        super(distributedIndicatorValueService);
         this.cachingEnabled = true;
-    }
-
-    @Override
-    protected long initValue() {
-        return Utils.getMillisecondsNow();
     }
 
     @Override
@@ -81,12 +75,20 @@ public final class PingIntervalClientIndicator extends AbstractPingIndicator {
         if (!this.initialized) {
             return Double.NaN;
         }
-        final long currentTimeMillis = DateTimeUtils.currentTimeMillis();
+
         if (this.initialized && !this.cachingEnabled && this.active
-                && this.lastUpdate != this.distributedPingCache.lastUpdate()) {
+                && this.lastUpdate != this.distributedIndicatorValueService.lastUpdate()) {
+
+            final long currentTimeMillis = DateTimeUtils.currentTimeMillis();
             this.currentValue = computeValueAt(currentTimeMillis);
+            this.lastUpdate = this.distributedIndicatorValueService.lastUpdate();
+            return (currentTimeMillis < this.currentValue)
+                    ? DateTimeUtils.currentTimeMillis() - this.currentValue
+                    : currentTimeMillis - this.currentValue;
+
+        } else {
+            return DateTimeUtils.currentTimeMillis() - this.currentValue;
         }
-        return currentTimeMillis - this.currentValue;
     }
 
     @Override
@@ -101,17 +103,14 @@ public final class PingIntervalClientIndicator extends AbstractPingIndicator {
 
     @Override
     public final double computeValueAt(final long timestamp) {
-        if (!this.cachingEnabled && super.ditributedIndicatorValueRecordId != null) {
+        if (super.ditributedIndicatorValueRecordId != null) {
 
-            final Long lastPing = this.distributedPingCache
+            final Long lastPing = this.distributedIndicatorValueService
                     .getIndicatorValue(super.ditributedIndicatorValueRecordId);
 
-            if (lastPing != null) {
-                final double doubleValue = lastPing.doubleValue();
-                return Math.max(Double.isNaN(this.currentValue) ? doubleValue : this.currentValue, doubleValue);
-            }
-
-            return this.currentValue;
+            return (lastPing != null)
+                    ? lastPing.doubleValue()
+                    : this.currentValue;
         }
 
         return !this.initialized ? timestamp : this.currentValue;

@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.context.event.EventListener;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
@@ -47,6 +48,7 @@ import ch.ethz.seb.sebserver.webservice.servicelayer.dao.FilterMap;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.IndicatorDAO;
 import ch.ethz.seb.sebserver.webservice.servicelayer.lms.LmsAPIService;
 import ch.ethz.seb.sebserver.webservice.servicelayer.lms.SEBRestrictionService;
+import ch.ethz.seb.sebserver.webservice.servicelayer.session.ExamFinishedEvent;
 import ch.ethz.seb.sebserver.webservice.servicelayer.session.ExamSessionService;
 
 @Lazy
@@ -255,6 +257,15 @@ public class ExamSessionServiceImpl implements ExamSessionService {
     }
 
     @Override
+    public Result<Collection<Exam>> getFilteredFinishedExams(
+            final FilterMap filterMap,
+            final Predicate<Exam> predicate) {
+
+        filterMap.putIfAbsent(Exam.FILTER_ATTR_STATUS, ExamStatus.FINISHED.name());
+        return this.examDAO.allMatching(filterMap, predicate);
+    }
+
+    @Override
     public void streamDefaultExamConfig(
             final Long institutionId,
             final String connectionToken,
@@ -281,8 +292,8 @@ public class ExamSessionServiceImpl implements ExamSessionService {
             throw new IllegalStateException("Missing exam identifier or requested exam is not running");
         }
 
-        if (log.isDebugEnabled()) {
-            log.debug("Trying to get exam from InMemorySEBConfig");
+        if (log.isTraceEnabled()) {
+            log.trace("Trying to get exam from InMemorySEBConfig");
         }
 
         final InMemorySEBConfig sebConfigForExam = this.examSessionCacheService
@@ -295,14 +306,14 @@ public class ExamSessionServiceImpl implements ExamSessionService {
 
         try {
 
-            if (log.isDebugEnabled()) {
-                log.debug("SEB exam configuration download request, start writing SEB exam configuration");
+            if (log.isTraceEnabled()) {
+                log.trace("SEB exam configuration download request, start writing SEB exam configuration");
             }
 
             out.write(sebConfigForExam.getData());
 
-            if (log.isDebugEnabled()) {
-                log.debug("SEB exam configuration download request, finished writing SEB exam configuration");
+            if (log.isTraceEnabled()) {
+                log.trace("SEB exam configuration download request, finished writing SEB exam configuration");
             }
 
         } catch (final IOException e) {
@@ -391,6 +402,25 @@ public class ExamSessionServiceImpl implements ExamSessionService {
     public Result<Collection<String>> getActiveConnectionTokens(final Long examId) {
         return this.clientConnectionDAO
                 .getActiveConnctionTokens(examId);
+    }
+
+    @EventListener
+    public void notifyExamFinished(final ExamFinishedEvent event) {
+
+        log.info("ExamFinishedEvent received, process exam session cleanup...");
+
+        try {
+            if (!isExamRunning(event.exam.id)) {
+                this.flushCache(event.exam);
+                if (this.distributedSetup) {
+                    this.clientConnectionDAO
+                            .deleteClientIndicatorValues(event.exam)
+                            .getOrThrow();
+                }
+            }
+        } catch (final Exception e) {
+            log.error("Failed to cleanup on finished exam: {}", event.exam, e);
+        }
     }
 
     @Override

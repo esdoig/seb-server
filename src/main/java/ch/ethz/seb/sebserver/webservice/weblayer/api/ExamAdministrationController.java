@@ -358,7 +358,8 @@ public class ExamAdministrationController extends EntityController<Exam, Exam> {
             @PathVariable final Long modelId) {
 
         checkReadPrivilege(institutionId);
-        return this.examAdminService.getProctoringServiceSettings(modelId)
+        return this.examAdminService
+                .getProctoringServiceSettings(modelId)
                 .getOrThrow();
     }
 
@@ -376,14 +377,10 @@ public class ExamAdministrationController extends EntityController<Exam, Exam> {
             @Valid @RequestBody final ProctoringServiceSettings proctoringServiceSettings) {
 
         checkModifyPrivilege(institutionId);
-        return this.entityDAO.byPK(examId)
+        return this.entityDAO
+                .byPK(examId)
                 .flatMap(this.authorization::checkModify)
                 .map(exam -> {
-                    if (StringUtils.isNotBlank(proctoringServiceSettings.serverURL)) {
-                        this.examAdminService.getExamProctoringService(proctoringServiceSettings.serverType)
-                                .flatMap(service -> service.testExamProctoring(proctoringServiceSettings))
-                                .getOrThrow();
-                    }
                     this.examAdminService.saveProctoringServiceSettings(examId, proctoringServiceSettings);
                     return exam;
                 })

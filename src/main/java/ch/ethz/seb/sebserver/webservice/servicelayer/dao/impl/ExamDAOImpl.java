@@ -62,7 +62,7 @@ import ch.ethz.seb.sebserver.webservice.servicelayer.dao.FilterMap;
 import ch.ethz.seb.sebserver.webservice.servicelayer.dao.TransactionHandler;
 import ch.ethz.seb.sebserver.webservice.servicelayer.lms.LmsAPIService;
 import ch.ethz.seb.sebserver.webservice.servicelayer.lms.LmsAPITemplate;
-import ch.ethz.seb.sebserver.webservice.servicelayer.lms.impl.moodle.MoodleCourseAccess;
+import ch.ethz.seb.sebserver.webservice.servicelayer.lms.impl.moodle.legacy.MoodleCourseAccess;
 
 @Lazy
 @Component
@@ -818,7 +818,8 @@ public class ExamDAOImpl implements ExamDAO {
 
                             log.debug("Using short-name: {} for recovering", shortname);
 
-                            final QuizData recoveredQuizData = this.lmsAPIService.getLmsAPITemplate(lmsSetup.id)
+                            final QuizData recoveredQuizData = this.lmsAPIService
+                                    .getLmsAPITemplate(lmsSetup.id)
                                     .map(template -> template.getQuizzes(new FilterMap())
                                             .getOrThrow()
                                             .stream()

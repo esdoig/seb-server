@@ -56,7 +56,7 @@ public abstract class AbstractLogNumberIndicator extends AbstractLogIndicator {
     private void valueChanged(final String text, final double value) {
         if (this.tags == null || this.tags.length == 0 || hasTag(text)) {
             if (super.ditributedIndicatorValueRecordId != null) {
-                if (!this.distributedPingCache.updateIndicatorValueAsync(
+                if (!this.distributedIndicatorValueService.updateIndicatorValueAsync(
                         this.ditributedIndicatorValueRecordId,
                         Double.valueOf(value).longValue())) {
 
@@ -73,8 +73,8 @@ public abstract class AbstractLogNumberIndicator extends AbstractLogIndicator {
     @Override
     public double computeValueAt(final long timestamp) {
 
-        if (log.isDebugEnabled()) {
-            log.debug("computeValueAt: {}", timestamp);
+        if (log.isTraceEnabled()) {
+            log.trace("computeValueAt: {}", timestamp);
         }
 
         try {
@@ -99,8 +99,10 @@ public abstract class AbstractLogNumberIndicator extends AbstractLogIndicator {
             if (numericValue != null) {
 
                 // update active indicator value record on persistent when caching is not enabled
-                if (!this.cachingEnabled && this.active && this.ditributedIndicatorValueRecordId != null) {
-                    this.distributedPingCache.updateIndicatorValue(this.connectionId, numericValue.longValue());
+                if (this.active && this.ditributedIndicatorValueRecordId != null) {
+                    this.distributedIndicatorValueService.updateIndicatorValue(
+                            this.ditributedIndicatorValueRecordId,
+                            numericValue.longValue());
                 }
 
                 return numericValue.doubleValue();

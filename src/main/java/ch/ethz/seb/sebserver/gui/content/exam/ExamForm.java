@@ -65,8 +65,8 @@ import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.exam.CheckExamCon
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.exam.CheckSEBRestriction;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.exam.GetDefaultExamTemplate;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.exam.GetExam;
+import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.exam.GetExamProctoringSettings;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.exam.GetExamTemplate;
-import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.exam.GetProctoringSettings;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.exam.SaveExam;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.lmssetup.TestLmsSetup;
 import ch.ethz.seb.sebserver.gui.service.remote.webservice.api.quiz.GetQuizData;
@@ -143,7 +143,7 @@ public class ExamForm implements TemplateComposer {
     private final PageService pageService;
     private final ResourceService resourceService;
     private final ExamSEBRestrictionSettings examSEBRestrictionSettings;
-    private final ExamProctoringSettings examProctoringSettings;
+    private final ProctoringSettingsPopup proctoringSettingsPopup;
     private final WidgetFactory widgetFactory;
     private final RestService restService;
     private final ExamDeletePopup examDeletePopup;
@@ -154,7 +154,7 @@ public class ExamForm implements TemplateComposer {
     protected ExamForm(
             final PageService pageService,
             final ExamSEBRestrictionSettings examSEBRestrictionSettings,
-            final ExamProctoringSettings examProctoringSettings,
+            final ProctoringSettingsPopup proctoringSettingsPopup,
             final ExamToConfigBindingForm examToConfigBindingForm,
             final DownloadService downloadService,
             final ExamDeletePopup examDeletePopup,
@@ -165,7 +165,7 @@ public class ExamForm implements TemplateComposer {
         this.pageService = pageService;
         this.resourceService = pageService.getResourceService();
         this.examSEBRestrictionSettings = examSEBRestrictionSettings;
-        this.examProctoringSettings = examProctoringSettings;
+        this.proctoringSettingsPopup = proctoringSettingsPopup;
         this.widgetFactory = pageService.getWidgetFactory();
         this.restService = this.resourceService.getRestService();
         this.examDeletePopup = examDeletePopup;
@@ -244,10 +244,9 @@ public class ExamForm implements TemplateComposer {
         final boolean modifyGrant = userGrantCheck.m();
         final boolean writeGrant = userGrantCheck.w();
         final ExamStatus examStatus = exam.getStatus();
-        final boolean editable = modifyGrant && (examStatus == ExamStatus.UP_COMING ||
-                examStatus == ExamStatus.RUNNING);
+        final boolean editable = modifyGrant &&
+                (examStatus == ExamStatus.UP_COMING || examStatus == ExamStatus.RUNNING);
 
-//        TODO this is not performat try to improve by doing one check with the CheckExamConsistency above
         final boolean sebRestrictionAvailable = testSEBRestrictionAPI(exam);
         final boolean isRestricted = readonly && sebRestrictionAvailable && this.restService
                 .getBuilder(CheckSEBRestriction.class)
@@ -349,18 +348,19 @@ public class ExamForm implements TemplateComposer {
                         .withInputSpan(4)
                         .withEmptyCellSeparation(false))
 
-                .addField(FormBuilder.singleSelection(
-                        Domain.EXAM.ATTR_EXAM_TEMPLATE_ID,
-                        FORM_EXAM_TEMPLATE_TEXT_KEY,
-                        (exam.examTemplateId == null)
-                                ? getDefaultExamTemplateId()
-                                : String.valueOf(exam.examTemplateId),
-                        this.resourceService::examTemplateResources)
-                        .withSelectionListener(form -> this.processTemplateSelection(form, formContext))
-                        .withLabelSpan(2)
-                        .withInputSpan(4)
-                        .withEmptyCellSpan(2)
-                        .readonly(!importFromQuizData))
+                .addFieldIf(
+                        () -> importFromQuizData,
+                        () -> FormBuilder.singleSelection(
+                                Domain.EXAM.ATTR_EXAM_TEMPLATE_ID,
+                                FORM_EXAM_TEMPLATE_TEXT_KEY,
+                                (exam.examTemplateId == null)
+                                        ? getDefaultExamTemplateId()
+                                        : String.valueOf(exam.examTemplateId),
+                                this.resourceService::examTemplateResources)
+                                .withSelectionListener(form -> this.processTemplateSelection(form, formContext))
+                                .withLabelSpan(2)
+                                .withInputSpan(4)
+                                .withEmptyCellSpan(2))
 
                 .addField(FormBuilder.singleSelection(
                         Domain.EXAM.ATTR_TYPE,
@@ -390,7 +390,7 @@ public class ExamForm implements TemplateComposer {
         }
 
         final boolean proctoringEnabled = importFromQuizData ? false : this.restService
-                .getBuilder(GetProctoringSettings.class)
+                .getBuilder(GetExamProctoringSettings.class)
                 .withURIVariable(API.PARAM_MODEL_ID, entityKey.modelId)
                 .call()
                 .map(ProctoringServiceSettings::getEnableProctoring)
@@ -406,6 +406,11 @@ public class ExamForm implements TemplateComposer {
                 .newAction(ActionDefinition.EXAM_MODIFY)
                 .withEntityKey(entityKey)
                 .publishIf(() -> modifyGrant && readonly && editable)
+
+                .newAction(ActionDefinition.EXAM_DELETE)
+                .withEntityKey(entityKey)
+                .withExec(this.examDeletePopup.deleteWizardFunction(pageContext))
+                .publishIf(() -> writeGrant && readonly)
 
                 .newAction(ActionDefinition.EXAM_SAVE)
                 .withExec(action -> (importFromQuizData)
@@ -450,20 +455,15 @@ public class ExamForm implements TemplateComposer {
 
                 .newAction(ActionDefinition.EXAM_PROCTORING_ON)
                 .withEntityKey(entityKey)
-                .withExec(this.examProctoringSettings.settingsFunction(this.pageService, modifyGrant))
+                .withExec(this.proctoringSettingsPopup.settingsFunction(this.pageService, modifyGrant && editable))
                 .noEventPropagation()
-                .publishIf(() -> editable && proctoringEnabled && readonly)
+                .publishIf(() -> proctoringEnabled && readonly)
 
                 .newAction(ActionDefinition.EXAM_PROCTORING_OFF)
                 .withEntityKey(entityKey)
-                .withExec(this.examProctoringSettings.settingsFunction(this.pageService, modifyGrant))
+                .withExec(this.proctoringSettingsPopup.settingsFunction(this.pageService, modifyGrant && editable))
                 .noEventPropagation()
-                .publishIf(() -> editable && !proctoringEnabled && readonly)
-
-                .newAction(ActionDefinition.EXAM_DELETE)
-                .withEntityKey(entityKey)
-                .withExec(this.examDeletePopup.deleteWizardFunction(pageContext))
-                .publishIf(() -> writeGrant && readonly);
+                .publishIf(() -> !proctoringEnabled && readonly);
 
         // additional data in read-only view
         if (readonly && !importFromQuizData) {

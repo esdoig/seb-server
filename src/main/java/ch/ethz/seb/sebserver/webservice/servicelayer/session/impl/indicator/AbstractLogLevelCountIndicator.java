@@ -55,8 +55,8 @@ public abstract class AbstractLogLevelCountIndicator extends AbstractLogIndicato
     @Override
     public double computeValueAt(final long timestamp) {
 
-        if (log.isDebugEnabled()) {
-            log.debug("computeValueAt: {}", timestamp);
+        if (log.isTraceEnabled()) {
+            log.trace("computeValueAt: {}", timestamp);
         }
 
         try {
@@ -74,8 +74,10 @@ public abstract class AbstractLogLevelCountIndicator extends AbstractLogIndicato
                     .execute();
 
             // update active indicator value record on persistent when caching is not enabled
-            if (!this.cachingEnabled && this.active && this.ditributedIndicatorValueRecordId != null) {
-                this.distributedPingCache.updateIndicatorValue(this.connectionId, numberOfLogs.longValue());
+            if (this.active && this.ditributedIndicatorValueRecordId != null) {
+                this.distributedIndicatorValueService.updateIndicatorValue(
+                        this.ditributedIndicatorValueRecordId,
+                        numberOfLogs.longValue());
             }
 
             return numberOfLogs.doubleValue();
@@ -113,7 +115,7 @@ public abstract class AbstractLogLevelCountIndicator extends AbstractLogIndicato
     private void valueChanged(final String eventText) {
         if (this.tags == null || this.tags.length == 0 || hasTag(eventText)) {
             if (super.ditributedIndicatorValueRecordId != null) {
-                this.distributedPingCache.incrementIndicatorValue(super.ditributedIndicatorValueRecordId);
+                this.distributedIndicatorValueService.incrementIndicatorValue(super.ditributedIndicatorValueRecordId);
             }
             this.currentValue = getValue() + 1d;
         }

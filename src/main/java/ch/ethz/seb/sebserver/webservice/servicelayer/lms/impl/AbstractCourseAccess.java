@@ -20,7 +20,6 @@ import org.springframework.core.env.Environment;
 import ch.ethz.seb.sebserver.gbl.Constants;
 import ch.ethz.seb.sebserver.gbl.async.AsyncService;
 import ch.ethz.seb.sebserver.gbl.async.CircuitBreaker;
-import ch.ethz.seb.sebserver.gbl.async.CircuitBreaker.State;
 import ch.ethz.seb.sebserver.gbl.model.exam.Chapters;
 import ch.ethz.seb.sebserver.gbl.model.exam.QuizData;
 import ch.ethz.seb.sebserver.gbl.model.user.ExamineeAccountDetails;
@@ -34,14 +33,6 @@ import ch.ethz.seb.sebserver.webservice.servicelayer.dao.FilterMap;
 public abstract class AbstractCourseAccess {
 
     private static final Logger log = LoggerFactory.getLogger(AbstractCourseAccess.class);
-
-    /** Fetch status that indicates an asynchronous quiz data fetch status if the
-     * concrete implementation has such. */
-    public enum FetchStatus {
-        ALL_FETCHED,
-        ASYNC_FETCH_RUNNING,
-        FETCH_ERROR
-    }
 
     /** CircuitBreaker for protected quiz and course data requests */
     protected final CircuitBreaker<List<QuizData>> allQuizzesRequest;
@@ -80,7 +71,7 @@ public abstract class AbstractCourseAccess {
                 environment.getProperty(
                         "sebserver.webservice.circuitbreaker.quizzesRequest.blockingTime",
                         Long.class,
-                        Constants.MINUTE_IN_MILLIS),
+                        Constants.SECOND_IN_MILLIS * 10),
                 environment.getProperty(
                         "sebserver.webservice.circuitbreaker.quizzesRequest.timeToRecover",
                         Long.class,
@@ -94,7 +85,7 @@ public abstract class AbstractCourseAccess {
                 environment.getProperty(
                         "sebserver.webservice.circuitbreaker.quizzesRequest.blockingTime",
                         Long.class,
-                        Constants.MINUTE_IN_MILLIS),
+                        Constants.SECOND_IN_MILLIS * 10),
                 environment.getProperty(
                         "sebserver.webservice.circuitbreaker.quizzesRequest.timeToRecover",
                         Long.class,
@@ -112,7 +103,7 @@ public abstract class AbstractCourseAccess {
                 environment.getProperty(
                         "sebserver.webservice.circuitbreaker.chaptersRequest.timeToRecover",
                         Long.class,
-                        Constants.MINUTE_IN_MILLIS));
+                        Constants.SECOND_IN_MILLIS * 30));
 
         this.accountDetailRequest = asyncService.createCircuitBreaker(
                 environment.getProperty(
@@ -126,19 +117,28 @@ public abstract class AbstractCourseAccess {
                 environment.getProperty(
                         "sebserver.webservice.circuitbreaker.accountDetailRequest.timeToRecover",
                         Long.class,
-                        Constants.SECOND_IN_MILLIS * 10));
+                        Constants.SECOND_IN_MILLIS * 30));
     }
 
     public Result<List<QuizData>> protectedQuizzesRequest(final FilterMap filterMap) {
-        return this.allQuizzesRequest.protectedRun(allQuizzesSupplier(filterMap));
+        return this.allQuizzesRequest.protectedRun(allQuizzesSupplier(filterMap))
+                .onError(error -> log.error(
+                        "Failed to run protectedQuizzesRequest: {}",
+                        error.getMessage()));
     }
 
     public Result<Collection<QuizData>> protectedQuizzesRequest(final Set<String> ids) {
-        return this.quizzesRequest.protectedRun(quizzesSupplier(ids));
+        return this.quizzesRequest.protectedRun(quizzesSupplier(ids))
+                .onError(error -> log.error(
+                        "Failed to run protectedQuizzesRequest: {}",
+                        error.getMessage()));
     }
 
     public Result<QuizData> protectedQuizRequest(final String id) {
-        return this.quizRequest.protectedRun(quizSupplier(id));
+        return this.quizRequest.protectedRun(quizSupplier(id))
+                .onError(error -> log.error(
+                        "Failed to run protectedQuizRequest: {}",
+                        error.getMessage()));
     }
 
     public Result<ExamineeAccountDetails> getExamineeAccountDetails(final String examineeSessionId) {
@@ -165,7 +165,10 @@ public abstract class AbstractCourseAccess {
     }
 
     public Result<Chapters> getCourseChapters(final String courseId) {
-        return this.chaptersRequest.protectedRun(getCourseChaptersSupplier(courseId));
+        return this.chaptersRequest.protectedRun(getCourseChaptersSupplier(courseId))
+                .onError(error -> log.error(
+                        "Failed to run getCourseChapters: {}",
+                        error.getMessage()));
     }
 
     protected abstract Supplier<ExamineeAccountDetails> accountDetailsSupplier(final String examineeSessionId);
@@ -182,10 +185,4 @@ public abstract class AbstractCourseAccess {
     /** Provides a supplier for the course chapter data request to use within the circuit breaker */
     protected abstract Supplier<Chapters> getCourseChaptersSupplier(final String courseId);
 
-    protected FetchStatus getFetchStatus() {
-        if (this.quizzesRequest.getState() != State.CLOSED) {
-            return FetchStatus.FETCH_ERROR;
-        }
-        return FetchStatus.ALL_FETCHED;
-    }
 }

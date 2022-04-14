@@ -6,7 +6,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-package ch.ethz.seb.sebserver.webservice.servicelayer.lms.impl.moodle;
+package ch.ethz.seb.sebserver.webservice.servicelayer.lms.impl.moodle.legacy;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -22,14 +22,12 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 
 import ch.ethz.seb.sebserver.gbl.api.JSONMapper;
-import ch.ethz.seb.sebserver.gbl.async.AsyncRunner;
-import ch.ethz.seb.sebserver.gbl.async.AsyncService;
 import ch.ethz.seb.sebserver.gbl.model.institution.LmsSetup.LmsType;
 import ch.ethz.seb.sebserver.gbl.model.institution.LmsSetupTestResult;
 import ch.ethz.seb.sebserver.gbl.model.institution.LmsSetupTestResult.ErrorType;
 import ch.ethz.seb.sebserver.gbl.model.user.ExamineeAccountDetails;
 import ch.ethz.seb.sebserver.gbl.util.Result;
-import ch.ethz.seb.sebserver.webservice.servicelayer.lms.impl.moodle.MoodleRestTemplateFactory.MoodleAPIRestTemplate;
+import ch.ethz.seb.sebserver.webservice.servicelayer.lms.impl.moodle.legacy.MoodleRestTemplateFactory.MoodleAPIRestTemplate;
 
 public class MoodleCourseAccessTest {
 
@@ -75,7 +73,6 @@ public class MoodleCourseAccessTest {
                 new JSONMapper(),
                 moodleRestTemplateFactory,
                 null,
-                new AsyncService(new AsyncRunner()),
                 this.env);
 
         final String examId = "123";
@@ -123,10 +120,9 @@ public class MoodleCourseAccessTest {
                 new JSONMapper(),
                 moodleRestTemplateFactory,
                 null,
-                mock(AsyncService.class),
                 this.env);
 
-        final LmsSetupTestResult initAPIAccess = moodleCourseAccess.initAPIAccess();
+        final LmsSetupTestResult initAPIAccess = moodleCourseAccess.testCourseAccessAPI();
         assertNotNull(initAPIAccess);
         assertFalse(initAPIAccess.errors.isEmpty());
         assertTrue(initAPIAccess.hasError(ErrorType.TOKEN_REQUEST));
@@ -145,10 +141,9 @@ public class MoodleCourseAccessTest {
                 new JSONMapper(),
                 moodleRestTemplateFactory,
                 null,
-                mock(AsyncService.class),
                 this.env);
 
-        final LmsSetupTestResult initAPIAccess = moodleCourseAccess.initAPIAccess();
+        final LmsSetupTestResult initAPIAccess = moodleCourseAccess.testCourseAccessAPI();
         assertNotNull(initAPIAccess);
         assertFalse(initAPIAccess.errors.isEmpty());
         assertTrue(initAPIAccess.hasError(ErrorType.QUIZ_ACCESS_API_REQUEST));
@@ -166,10 +161,9 @@ public class MoodleCourseAccessTest {
                 new JSONMapper(),
                 moodleRestTemplateFactory,
                 null,
-                mock(AsyncService.class),
                 this.env);
 
-        final LmsSetupTestResult initAPIAccess = moodleCourseAccess.initAPIAccess();
+        final LmsSetupTestResult initAPIAccess = moodleCourseAccess.testCourseAccessAPI();
         assertNotNull(initAPIAccess);
         assertTrue(initAPIAccess.errors.isEmpty());
 
